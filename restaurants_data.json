@@ -1,0 +1,29 @@
+[
+  {
+    "id": "1",
+    "name": "Soda La Evasora",
+    "province": "San José",
+    "address": "Av Central",
+    "lat": 9.9333,
+    "lng": -84.0833,
+    "addedAt": "2025-11-19 16:02:51.429005"
+  },
+  {
+    "id": "2",
+    "name": "Bar El Sin Papel",
+    "province": "Heredia",
+    "address": "Cerca del parque",
+    "lat": 9.9981,
+    "lng": -84.1198,
+    "addedAt": "2025-11-19 16:02:51.429029"
+  },
+  {
+    "id": "7da58a17-e17b-4fec-bc9e-14bee0692f24",
+    "name": "KFC",
+    "province": "San José",
+    "address": "",
+    "lat": null,
+    "lng": null,
+    "addedAt": "2025-11-19 16:46:16.759300"
+  }
+]

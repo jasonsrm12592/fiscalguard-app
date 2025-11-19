@@ -1,0 +1,7 @@
+streamlit
+streamlit-folium
+folium
+google-generativeai
+pandas
+python-dotenv
+matplotlib
