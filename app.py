@@ -221,25 +221,17 @@ if st.session_state['is_admin']:
 
 # --- VISTA USUARIO (MAPA Y LISTA) ---
 else:
-    # 1. AQUÍ SE CREAN LAS VARIABLES (IMPORTANTE)
-    col_map, col_list = st.columns([2, 1])
+    # CAMBIO RESPONSIVE: Usamos Pestañas en lugar de Columnas.
+    # Esto hace que en el celular se vea perfecto (uno a la vez).
+    tab_map, tab_list = st.tabs(["🗺️ Mapa Interactiva", "📋 Lista de Locales"])
     
-    # 2. Columna de la Lista (Derecha)
-    with col_list:
-        st.subheader(f"Listado ({len(df)})")
-        for idx, row in df.iterrows():
-            with st.expander(f"🚫 {row['name']}"):
-                st.write(f"**Provincia:** {row['province']}")
-                st.write(f"**Dirección:** {row['address']}")
-                st.warning("No entrega factura electrónica")
-
-# 3. Columna del Mapa (Izquierda)
-    with col_map:
-        # Mapa Base - Centro default (Costa Rica)
+    # 1. Pestaña del Mapa (Aprovecha todo el ancho)
+    with tab_map:
+        # Mapa Base
         m = folium.Map(location=[9.7489, -83.7534], zoom_start=8)
         
         for idx, row in df.iterrows():
-            # CORRECCIÓN AQUÍ: Usamos pd.notna() para filtrar los NaNs rebeldes
+            # Mantenemos la corrección de seguridad (NaN)
             if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
                 folium.CircleMarker(
                     location=[row['lat'], row['lng']],
@@ -250,4 +242,16 @@ else:
                     fill_color="#ef4444"
                 ).add_to(m)
         
-        st_folium(m, width="100%", height=600)
+        # Ajustamos la altura para que quepa bien en celulares (500px está bien)
+        st_folium(m, width="100%", height=500)
+
+    # 2. Pestaña del Listado
+    with tab_list:
+        st.info(f"Se encontraron {len(df)} registros.")
+        for idx, row in df.iterrows():
+            # Usamos un contenedor con borde para que se vea como tarjeta en el cel
+            with st.container(border=True):
+                st.subheader(f"🚫 {row['name']}")
+                st.text(f"📍 {row['province']}")
+                st.caption(row['address'])
+                st.warning("Reporte: No entrega factura electrónica")
