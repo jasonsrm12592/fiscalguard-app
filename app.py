@@ -20,6 +20,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+# --- OCULTAR MENÚ Y FOOTER DE STREAMLIT ---
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # Archivo local para persistencia de datos
 DATA_FILE = "restaurants_data.json"
@@ -255,3 +264,4 @@ else:
                 st.text(f"📍 {row['province']}")
                 st.caption(row['address'])
                 st.warning("Reporte: No entrega factura electrónica")
+
