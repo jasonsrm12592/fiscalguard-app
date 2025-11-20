@@ -305,7 +305,8 @@ else:
                 ).add_to(m)
         
         # Ajustamos la altura para que quepa bien en celulares (500px está bien)
-        st_folium(m, width="100%", height=500)
+        # CAMBIO AQUÍ: Agregamos returned_objects=[]
+        st_folium(m, width="100%", height=500, returned_objects=[])
         for idx, row in df.iterrows():
             # Mantenemos la corrección de seguridad (NaN)
             if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
@@ -330,4 +331,5 @@ else:
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']}")
                 st.caption(row['address'])
+
                 st.warning("Reporte: No entrega factura electrónica")
