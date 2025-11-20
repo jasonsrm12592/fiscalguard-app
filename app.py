@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import LocateControl
 import google.generativeai as genai
 import json
 import os
@@ -9,19 +10,18 @@ import uuid
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
-from folium.plugins import LocateControl
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CARGAR VARIABLES DE ENTORNO ---
-load_dotenv()
-
-# --- CONFIGURACIÓN INICIAL ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="FiscalGuard - Lista Negra",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# --- OCULTAR MENÚ Y FOOTER DE STREAMLIT ---
+
+# Estilos CSS para ocultar menú de desarrollador pero dejar la flecha lateral
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -30,29 +30,68 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# Archivo local para persistencia de datos
-DATA_FILE = "restaurants_data.json"
+# Cargar variables de entorno locales (si existen)
+load_dotenv()
 
-# --- SERVICIOS (Gemini & Data) ---
+# --- CONEXIÓN BASE DE DATOS (GOOGLE SHEETS) ---
 
-def get_api_key():
-    # Intenta obtener de variables de entorno o secrets de streamlit
-    return os.getenv("API_KEY") or st.secrets.get("API_KEY", "")
+def get_db_connection():
+    # Definir alcance
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    # Cargar credenciales desde Secrets de Streamlit
+    if "gcp_service_account" not in st.secrets:
+        st.error("Faltan los secretos de Google Cloud en Streamlit.")
+        return None
+        
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    
+    # Abrir hoja
+    try:
+        sheet = client.open("FiscalGuard_DB").sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"No se encontró la hoja 'FiscalGuard_DB'. Error: {e}")
+        return None
 
 def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        # Datos semilla si no existe el archivo
-        return [
-            {"id": "1", "name": "Soda La Evasora", "province": "San José", "address": "Av Central", "lat": 9.9333, "lng": -84.0833, "addedAt": str(datetime.now())},
-            {"id": "2", "name": "Bar El Sin Papel", "province": "Heredia", "address": "Cerca del parque", "lat": 9.9981, "lng": -84.1198, "addedAt": str(datetime.now())}
-        ]
+    sheet = get_db_connection()
+    if not sheet:
+        return []
+    
+    try:
+        data = sheet.get_all_records()
+        return data
+    except Exception as e:
+        # Si la hoja está totalmente vacía puede dar error, devolvemos lista vacía
+        return []
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    sheet = get_db_connection()
+    if not sheet:
+        return
+
+    try:
+        sheet.clear() # Limpiar todo
+        if not data:
+            return 
+            
+        # Escribir encabezados y datos
+        headers = list(data[0].keys())
+        sheet.append_row(headers)
+        
+        # Preparar filas
+        rows_to_upload = [list(item.values()) for item in data]
+        sheet.append_rows(rows_to_upload)
+    except Exception as e:
+        st.error(f"Error guardando en Google Sheets: {e}")
+
+# --- SERVICIOS GEMINI (IA) ---
+
+def get_api_key():
+    return os.getenv("API_KEY") or st.secrets.get("API_KEY", "")
 
 def configure_gemini():
     api_key = get_api_key()
@@ -64,20 +103,17 @@ def configure_gemini():
 def suggest_coordinates(address, province):
     if not configure_gemini():
         return None
-    
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f'Give me the approximate latitude and longitude for {address}, {province}, Costa Rica. Return ONLY JSON: {{ "lat": number, "lng": number }}'
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
-    except Exception as e:
-        st.error(f"Error IA Geolocalización: {e}")
+    except:
         return None
 
 def parse_ai_list(raw_text):
     if not configure_gemini():
         return []
-    
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
@@ -89,21 +125,22 @@ def parse_ai_list(raw_text):
         data = json.loads(response.text)
         return data.get("restaurants", [])
     except Exception as e:
-        st.error(f"Error IA Parsing: {e}")
+        st.error(f"Error IA: {e}")
         return []
 
 # --- INTERFAZ DE USUARIO ---
 
-# Cargar datos al estado de sesión
+# Cargar datos
 if 'restaurants' not in st.session_state:
     st.session_state['restaurants'] = load_data()
 
-# 1. SIDEBAR (Solo dejamos el Login y Logo para limpiar espacio)
+# 1. SIDEBAR (Login y Logo)
 with st.sidebar:
-    st.image("logo.png", width=150)
+    # Intenta cargar logo local, si falla no muestra nada para no romper
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=150)
     st.title("FiscalGuard")
     
-    # Modo Admin Toggle
     if 'is_admin' not in st.session_state:
         st.session_state['is_admin'] = False
 
@@ -122,23 +159,17 @@ with st.sidebar:
             st.session_state['is_admin'] = False
             st.rerun()
 
-# 2. BARRA DE BÚSQUEDA (Ahora en la pantalla principal)
-# Usamos un contenedor para que destaque
+# 2. BARRA DE BÚSQUEDA (Principal)
 with st.container(border=True):
     col_search, col_prov = st.columns([2, 1])
-    
     with col_search:
-        search_query = st.text_input("🔍 Buscar", placeholder="Nombre del local o dirección...")
-    
+        search_query = st.text_input("🔍 Buscar", placeholder="Nombre o dirección...")
     with col_prov:
         provinces = ["Todas", "San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"]
         selected_province = st.selectbox("Provincia", provinces)
 
-# --- LÓGICA PRINCIPAL ---
-
-# Filtrar datos para mostrar
+# Filtrado de datos
 df = pd.DataFrame(st.session_state['restaurants'])
-
 if not df.empty:
     if selected_province != "Todas":
         df = df[df['province'] == selected_province]
@@ -147,189 +178,102 @@ if not df.empty:
 
 # --- VISTA ADMINISTRADOR ---
 if st.session_state['is_admin']:
-    tab1, tab2, tab3 = st.tabs(["📋 Lista & Gestión", "➕ Agregar (Manual/IA)", "📊 Estadísticas"])
+    tab1, tab2, tab3 = st.tabs(["📋 Gestión (Editable)", "➕ Agregar (IA)", "📊 Datos"])
     
     with tab1:
-        st.subheader("📋 Lista y Gestión de Locales")
-        st.info("Puedes editar las celdas directamente en la tabla.")
-
-        # Usamos st.data_editor para una tabla editable
+        st.info("Edita directamente en la tabla. Para guardar, pulsa el botón abajo.")
+        
+        # TABLA EDITABLE
         edited_df = st.data_editor(
-            df[['id', 'name', 'province', 'address', 'lat', 'lng', 'addedAt']], # Columnas a mostrar y editar
-            num_rows="dynamic", # Permite al usuario añadir filas (aunque las nuevas no tienen ID auto)
-            hide_index=True,    # Oculta el índice numérico de Pandas
-            use_container_width=True, # Adapta al ancho de la columna
-            key="editable_restaurants_table" # Identificador único para este widget
+            df, 
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor",
+            column_config={
+                "lat": st.column_config.NumberColumn(format="%.5f"),
+                "lng": st.column_config.NumberColumn(format="%.5f"),
+            }
         )
 
-        st.markdown("---")
-        col_save, col_delete_selected = st.columns([1, 1])
-
-        with col_save:
-            # Botón para guardar los cambios editados
-            if st.button("💾 Guardar Cambios Editados", type="primary"):
-                # Convertimos el DataFrame editado a la lista de diccionarios original
-                updated_restaurants = edited_df.to_dict(orient='records')
-                
-                # Sincronizar con st.session_state
-                # OJO: Aquí estamos reemplazando completamente la lista.
-                # En un sistema real, verificarías IDs y fusionarías.
-                st.session_state['restaurants'] = updated_restaurants
-                save_data(st.session_state['restaurants'])
-                st.success("¡Cambios guardados con éxito!")
-                st.rerun() # Recargar la app para mostrar los datos actualizados
-
-        with col_delete_selected:
-            # Opción para eliminar múltiples filas seleccionadas
-            if not edited_df.empty:
-                st.write("Selecciona filas para eliminar en la tabla de arriba.")
-                # st.data_editor devuelve el DataFrame editado.
-                # Las filas eliminadas no aparecen en edited_df.
-                # Para implementar la eliminación de UNA LÍNEA como querías,
-                # st.data_editor es un poco más complejo porque no te da un botón por fila.
-                # La mejor forma de hacer un "botón de basurero por fila" es con un enfoque más manual.
-                # Por ahora, con data_editor se edita/añade, la eliminación es un poco más indirecta
-                # o requiere que el usuario borre el contenido de la fila.
-
-                # Para una eliminación directa, podemos volver a una tabla manual
-                # o esperar a una futura mejora de Streamlit.
-                # Por ahora, el usuario puede borrar el contenido de la fila y luego "Guardar Cambios".
-                # O una opción de 'Eliminar todo lo que NO está en esta tabla editada'.
-                pass # Eliminación por fila directa es más avanzada con data_editor.
+        if st.button("💾 Guardar Cambios en Nube", type="primary"):
+            updated_data = edited_df.to_dict(orient='records')
+            st.session_state['restaurants'] = updated_data
+            save_data(updated_data) # Guarda en Google Sheets
+            st.success("¡Base de datos actualizada!")
+            st.rerun()
 
     with tab2:
-        col_manual, col_ai = st.columns(2)
-        
-        with col_manual:
+        col_man, col_ai = st.columns(2)
+        with col_man:
             st.subheader("Manual")
-            with st.form("manual_add"):
+            with st.form("add_manual"):
                 name = st.text_input("Nombre")
-                prov = st.selectbox("Provincia", provinces[1:]) # Skip 'Todas'
+                prov = st.selectbox("Provincia", provinces[1:])
                 addr = st.text_input("Dirección")
-                
-                lat = st.number_input("Latitud", min_value=-90.0, max_value=90.0, format="%.6f", value=0.0)
-                lng = st.number_input("Longitud", min_value=-180.0, max_value=180.0, format="%.6f", value=0.0)
-                
-                submitted = st.form_submit_button("Guardar")
-                if submitted:
-                    if any(r['name'].lower() == name.lower() for r in st.session_state['restaurants']):
-                        st.error("El restaurante ya existe.")
-                    else:
-                        new_r = {
-                            "id": str(uuid.uuid4()),
-                            "name": name,
-                            "province": prov,
-                            "address": addr,
-                            "lat": lat if lat != 0 else None,
-                            "lng": lng if lng != 0 else None,
-                            "addedAt": str(datetime.now())
-                        }
-                        st.session_state['restaurants'].append(new_r)
-                        save_data(st.session_state['restaurants'])
-                        st.success("Agregado correctamente")
-                        st.rerun()
+                lat = st.number_input("Lat", format="%.5f")
+                lng = st.number_input("Lng", format="%.5f")
+                if st.form_submit_button("Guardar"):
+                    new_r = {
+                        "id": str(uuid.uuid4()), "name": name, "province": prov, 
+                        "address": addr, "lat": lat, "lng": lng, "addedAt": str(datetime.now())
+                    }
+                    st.session_state['restaurants'].append(new_r)
+                    save_data(st.session_state['restaurants'])
+                    st.success("Guardado")
+                    st.rerun()
 
         with col_ai:
             st.subheader("Importar con IA")
-            st.info("Pega texto desordenado o celdas de Excel.")
-            raw_text = st.text_area("Texto Raw")
-            if st.button("Procesar con Gemini"):
-                with st.spinner("Analizando y geolocalizando..."):
-                    parsed = parse_ai_list(raw_text)
+            raw_txt = st.text_area("Pega texto desordenado aquí")
+            if st.button("Procesar"):
+                with st.spinner("Gemini trabajando..."):
+                    items = parse_ai_list(raw_txt)
                     count = 0
-                    for p in parsed:
-                        if any(r['name'].lower() == p['name'].lower() for r in st.session_state['restaurants']):
-                            continue
-                        
-                        coords = suggest_coordinates(p['address'], p['province'])
-                        
+                    for it in items:
+                        coords = suggest_coordinates(it['address'], it['province'])
                         new_r = {
-                            "id": str(uuid.uuid4()),
-                            "name": p['name'],
-                            "province": p['province'],
-                            "address": p['address'],
-                            "lat": coords['lat'] if coords else None,
-                            "lng": coords['lng'] if coords else None,
+                            "id": str(uuid.uuid4()), "name": it['name'], "province": it['province'], 
+                            "address": it['address'], 
+                            "lat": coords['lat'] if coords else 0.0, 
+                            "lng": coords['lng'] if coords else 0.0, 
                             "addedAt": str(datetime.now())
                         }
                         st.session_state['restaurants'].append(new_r)
                         count += 1
-                    
                     save_data(st.session_state['restaurants'])
-                    st.success(f"Se importaron {count} restaurantes nuevos.")
+                    st.success(f"{count} locales importados.")
                     st.rerun()
-
-    with tab3:
-        st.subheader("Restaurantes por Provincia")
-        if not df.empty:
-            chart_data = df['province'].value_counts()
-            st.bar_chart(chart_data)
-        else:
-            st.warning("Sin datos.")
-
-# --- VISTA USUARIO (MAPA Y LISTA) ---
-else:
-    # CAMBIO RESPONSIVE: Usamos Pestañas en lugar de Columnas.
-    # Esto hace que en el celular se vea perfecto (uno a la vez).
-    tab_map, tab_list = st.tabs(["🗺️ Mapa Interactiva", "📋 Lista de Locales"])
     
-  # 1. Pestaña del Mapa (Aprovecha todo el ancho)
+    with tab3:
+        if not df.empty:
+            st.bar_chart(df['province'].value_counts())
+
+# --- VISTA USUARIO ---
+else:
+    tab_map, tab_list = st.tabs(["🗺️ Mapa", "📋 Listado"])
+    
     with tab_map:
-        # Mapa Base
-        m = folium.Map(location=[9.7489, -83.7534], zoom_start=8)
-        
-        # --- GPS DE ALTA PRECISIÓN ---
+        m = folium.Map(location=[9.93, -84.08], zoom_start=9)
         LocateControl(
-            auto_start=False,
-            drawCircle=True,
-            drawMarker=True,
-            flyTo=True,
-            strings={"title": "Mostrar mi ubicación precisa"},
-            locateOptions={
-                'enableHighAccuracy': True,
-                'maxZoom': 18
-            }
+            auto_start=False, drawCircle=True, drawMarker=True, flyTo=True,
+            strings={"title": "Mi Ubicación"},
+            locateOptions={'enableHighAccuracy': True, 'maxZoom': 18}
         ).add_to(m)
-        # -----------------------------
 
-        for idx, row in df.iterrows():
-            # Mantenemos la corrección de seguridad (NaN)
+        for _, row in df.iterrows():
             if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
                 folium.CircleMarker(
-                    location=[row['lat'], row['lng']],
-                    radius=8,
-                    popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=250),
-                    color="#dc2626",
-                    fill=True,
-                    fill_color="#ef4444"
+                    location=[row['lat'], row['lng']], radius=8,
+                    popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=200),
+                    color="#dc2626", fill=True, fill_color="#ef4444"
                 ).add_to(m)
         
-        # Ajustamos la altura para que quepa bien en celulares (500px está bien)
-        # CAMBIO AQUÍ: Agregamos returned_objects=[]
         st_folium(m, width="100%", height=500, returned_objects=[])
-        for idx, row in df.iterrows():
-            # Mantenemos la corrección de seguridad (NaN)
-            if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
-                folium.CircleMarker(
-                    location=[row['lat'], row['lng']],
-                    radius=8,
-                    popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=250),
-                    color="#dc2626",
-                    fill=True,
-                    fill_color="#ef4444"
-                ).add_to(m)
-        
-        # Ajustamos la altura para que quepa bien en celulares (500px está bien)
-        st_folium(m, width="100%", height=500)
 
-    # 2. Pestaña del Listado
     with tab_list:
-        st.info(f"Se encontraron {len(df)} registros.")
-        for idx, row in df.iterrows():
-            # Usamos un contenedor con borde para que se vea como tarjeta en el cel
+        st.info(f"{len(df)} Resultados")
+        for _, row in df.iterrows():
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
-                st.text(f"📍 {row['province']}")
-                st.caption(row['address'])
+                st.text(f"📍 {row['province']} | {row['address']}")
 
-                st.warning("Reporte: No entrega factura electrónica")
