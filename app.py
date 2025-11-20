@@ -134,13 +134,14 @@ with st.container(border=True):
         # AQUÍ ESTÁ EL TRUCO:
         search_query = st.text_input("🔍 Buscar", placeholder="Local, dirección...")
         
-        # --- PUERTA TRASERA ---
-        if search_query == "alrotek-admin":
+        # --- CORRECCIÓN DEL BUCLE ---
+        # Solo entra aquí si escribes la clave Y TODAVÍA NO ERES ADMIN
+        if search_query == "alrotek-admin" and not st.session_state['is_admin']:
             st.session_state['is_admin'] = True
             st.toast("🔓 Acceso Concedido", icon="😎")
             time.sleep(1)
             st.rerun()
-        # ----------------------
+        # ----------------------------
 
     with col_prov:
         provinces = ["Todas", "San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"]
@@ -235,4 +236,5 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
