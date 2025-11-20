@@ -157,7 +157,7 @@ with tab_admin:
         with st.form("login_form"):
             password = st.text_input("Contraseña de Acceso", type="password")
             if st.form_submit_button("Ingresar"):
-                if password in ["4610A"]:
+                if password == st.secrets["ADMIN_PASSWORD"]:
                     st.session_state['is_admin'] = True
                     st.rerun()
                 else:
@@ -214,4 +214,5 @@ with tab_admin:
                 if st.button("Procesar Texto"):
                     with st.spinner("Analizando..."):
                         its = parse
+
 
