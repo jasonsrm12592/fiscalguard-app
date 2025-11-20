@@ -22,35 +22,33 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS CSS  ---
-# --- ESTILOS CSS CORREGIDOS ---
+# --- ESTILOS CSS (Modo Limpio pero Funcional) ---
 hide_st_style = """
             <style>
-            /* 1. Ocultamos SOLO los botones de la derecha (GitHub, Menu, etc.) */
+            /* 1. Eliminar el Menú de la derecha (GitHub, Fork, Settings, etc) */
+            /* Usamos display: none para que desaparezca por completo del mapa */
             [data-testid="stToolbar"] {
-                visibility: hidden !important;
-                height: 0px; /* Para que no ocupe espacio */
+                display: none !important;
             }
-            
-            /* 2. Ocultamos la línea de colores decorativa de arriba */
+
+            /* 2. Eliminar la línea de colores decorativa superior */
             [data-testid="stDecoration"] {
-                visibility: hidden !important;
-                height: 0px;
+                display: none !important;
             }
 
-            /* 3. Ocultamos el pie de página */
+            /* 3. Eliminar el pie de página "Made with Streamlit" */
             footer {
-                visibility: hidden !important;
+                display: none !important;
             }
 
-            /* 4. IMPORTANTE: Forzamos a que la flecha del Sidebar sea visible */
-            [data-testid="stSidebarCollapsedControl"] {
-                visibility: visible !important;
-            }
+            /* 4. IMPORTANTE: NO ocultamos el 'header' general, 
+               así la flecha de la izquierda sigue existiendo. 
+               Solo ajustamos el padding para que se vea bien. */
             
-            /* Ajuste fino: Mueve un poco el contenido hacia arriba si queda mucho espacio blanco */
-            .block-container {
-                padding-top: 2rem;
+            /* 5. Aseguramos que el botón del sidebar sea visible y clicable */
+            [data-testid="stSidebarCollapsedControl"] {
+                display: block !important;
+                visibility: visible !important;
             }
             </style>
             """
@@ -309,6 +307,7 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
 
 
