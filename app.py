@@ -23,21 +23,34 @@ st.set_page_config(
 )
 
 # --- ESTILOS CSS  ---
+# --- ESTILOS CSS CORREGIDOS ---
 hide_st_style = """
             <style>
-            /* Oculta el menú de hamburguesa (tres puntos) y el botón de Deploy/Fork */
-            [data-testid="stToolbar"] {visibility: hidden !important;}
+            /* 1. Ocultamos SOLO los botones de la derecha (GitHub, Menu, etc.) */
+            [data-testid="stToolbar"] {
+                visibility: hidden !important;
+                height: 0px; /* Para que no ocupe espacio */
+            }
             
-            /* Oculta el pie de página "Made with Streamlit" */
-            footer {visibility: hidden !important;}
-            
-            /* Oculta la barra de decoración superior (la línea de colores) */
-            header {visibility: hidden !important;}
-            
-            /* ¡IMPORTANTE! Resucita la flecha del sidebar para que sea visible */
+            /* 2. Ocultamos la línea de colores decorativa de arriba */
+            [data-testid="stDecoration"] {
+                visibility: hidden !important;
+                height: 0px;
+            }
+
+            /* 3. Ocultamos el pie de página */
+            footer {
+                visibility: hidden !important;
+            }
+
+            /* 4. IMPORTANTE: Forzamos a que la flecha del Sidebar sea visible */
             [data-testid="stSidebarCollapsedControl"] {
                 visibility: visible !important;
-                display: block !important;
+            }
+            
+            /* Ajuste fino: Mueve un poco el contenido hacia arriba si queda mucho espacio blanco */
+            .block-container {
+                padding-top: 2rem;
             }
             </style>
             """
@@ -296,6 +309,7 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
 
 
