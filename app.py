@@ -291,78 +291,75 @@ with tab_admin:
                         st.success(f"{cnt} agregados.")
                         st.rerun()
 
-       # --- SUB-PESTAÑA 3: MANTENIMIENTO (CALIBRADOR MANUAL) ---
+       # --- SUB-PESTAÑA 3: CALIBRADOR RÁPIDO (COPY-PASTE) ---
         with subtab3:
-            st.header("🔧 Calibrador Manual de GPS")
-            st.info("Usa esta herramienta para corregir manualmente la ubicación de un local específico.")
+            st.header("🔧 Calibración por Coordenadas")
+            st.info("Busca el lugar en Google Maps, copia las coordenadas (click derecho) y pégalas aquí.")
 
-            # 1. Seleccionar el Restaurante
+            # 1. Seleccionar Local
             names_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
             selected_item = st.selectbox("Selecciona el local a corregir:", names_list)
             
-            # Encontramos el diccionario original basado en la selección
-            # (Usamos el índice para ser precisos)
+            # Identificamos el registro en memoria
             selected_index = names_list.index(selected_item)
             record = st.session_state['restaurants'][selected_index]
 
             st.markdown("---")
-            
-            col_ref, col_tool = st.columns([1, 2])
 
-            # COLUMNA IZQUIERDA: Referencia Externa
-            with col_ref:
-                st.subheader("1. Referencia")
-                st.write(f"**Dirección:** {record['address']}")
-                st.write(f"**Coords Actuales:** {record.get('lat', 0)}, {record.get('lng', 0)}")
+            col_input, col_preview = st.columns([1, 1])
+
+            with col_input:
+                st.subheader("1. Pegar Coordenadas")
                 
-                # Botón para buscar en Google Maps real
-                # Esto abre una pestaña nueva buscando la dirección para que el usuario se ubique
+                # Botón de ayuda para abrir Maps
                 search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']} Costa Rica"
-                st.link_button("🔎 Buscar en Google Maps", search_url, help="Abre un mapa externo para ver dónde queda el lugar realmente")
-                st.caption("Mira en Google Maps dónde queda, y luego marca el punto exacto en el mapa de la derecha 👉")
+                st.link_button("🔎 Abrir Google Maps para buscar", search_url)
+                
+                # CAJA DE TEXTO PARA PEGAR
+                # Pre-llenamos con lo que tenga actualmente (si no es 0)
+                current_val = f"{record['lat']}, {record['lng']}" if record['lat'] != 0 else ""
+                coords_input = st.text_input("Pega aquí (Latitud, Longitud):", value=current_val, placeholder="Ej: 9.9356, -84.0982")
+                
+                new_lat, new_lng = 0.0, 0.0
+                valid_input = False
 
-            # COLUMNA DERECHA: El Mapa Interactivo
-            with col_tool:
-                st.subheader("2. Marcar Punto Exacto")
-                
-                # Centramos el mapa: Si ya tiene coords, ahí. Si no, en la provincia.
-                start_lat = float(record['lat']) if record['lat'] != 0 else 9.9333
-                start_lng = float(record['lng']) if record['lng'] != 0 else -84.0833
-                
-                m_edit = folium.Map(location=[start_lat, start_lng], zoom_start=15)
-                
-                # Ponemos un marcador donde está actualmente
-                if record['lat'] != 0:
-                    folium.Marker(
-                        [record['lat'], record['lng']], 
-                        popup="Ubicación Actual",
-                        icon=folium.Icon(color="red", icon="info-sign")
-                    ).add_to(m_edit)
-                
-                # Permitir hacer clic para obtener coordenadas
-                m_edit.add_child(folium.LatLngPopup())
-                
-                # Mostramos el mapa y capturamos el clic
-                map_output = st_folium(m_edit, height=400, width="100%")
+                # Intentamos interpretar lo que pegó el usuario
+                if coords_input:
+                    try:
+                        # Google Maps suele dar "Lat, Lng". Separamos por la coma.
+                        parts = coords_input.split(',')
+                        if len(parts) == 2:
+                            new_lat = float(parts[0].strip())
+                            new_lng = float(parts[1].strip())
+                            valid_input = True
+                            st.success("✅ Formato correcto detectado.")
+                        else:
+                            st.error("Formato incorrecto. Asegúrate de copiar 'Latitud, Longitud' (con una coma en medio).")
+                    except:
+                        st.error("Error: Solo se permiten números y una coma.")
 
-                # LÓGICA DE GUARDADO
-                if map_output and map_output['last_clicked']:
-                    clicked_lat = map_output['last_clicked']['lat']
-                    clicked_lng = map_output['last_clicked']['lng']
-                    
-                    st.success(f"📍 Punto seleccionado: {clicked_lat:.5f}, {clicked_lng:.5f}")
-                    
-                    if st.button("💾 Guardar Nueva Ubicación", type="primary"):
-                        # Actualizamos memoria
-                        st.session_state['restaurants'][selected_index]['lat'] = clicked_lat
-                        st.session_state['restaurants'][selected_index]['lng'] = clicked_lng
-                        
-                        # Guardamos en Nube
+                if valid_input:
+                    if st.button("💾 Guardar Coordenadas", type="primary"):
+                        st.session_state['restaurants'][selected_index]['lat'] = new_lat
+                        st.session_state['restaurants'][selected_index]['lng'] = new_lng
                         save_data(st.session_state['restaurants'])
-                        
-                        st.toast(f"Ubicación de {record['name']} actualizada!", icon='✅')
+                        st.toast(f"Actualizado: {new_lat}, {new_lng}", icon='📍')
                         time.sleep(1.5)
                         st.rerun()
 
-
-
+            with col_preview:
+                st.subheader("2. Vista Previa")
+                # Si el usuario pegó algo válido, mostramos ESE punto. Si no, el actual.
+                preview_lat = new_lat if valid_input else (float(record['lat']) if record['lat'] != 0 else 9.9333)
+                preview_lng = new_lng if valid_input else (float(record['lng']) if record['lng'] != 0 else -84.0833)
+                
+                m_prev = folium.Map(location=[preview_lat, preview_lng], zoom_start=16)
+                
+                # Marcador
+                folium.Marker(
+                    [preview_lat, preview_lng],
+                    popup=f"{record['name']}",
+                    icon=folium.Icon(color="green" if valid_input else "gray", icon="map-marker")
+                ).add_to(m_prev)
+                
+                st_folium(m_prev, height=300, width="100%", returned_objects=[])
