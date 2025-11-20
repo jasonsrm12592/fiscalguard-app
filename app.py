@@ -273,13 +273,39 @@ else:
     # Esto hace que en el celular se vea perfecto (uno a la vez).
     tab_map, tab_list = st.tabs(["🗺️ Mapa Interactiva", "📋 Lista de Locales"])
     
-    # 1. Pestaña del Mapa (Aprovecha todo el ancho)
+  # 1. Pestaña del Mapa (Aprovecha todo el ancho)
     with tab_map:
         # Mapa Base
         m = folium.Map(location=[9.7489, -83.7534], zoom_start=8)
-        # --- NUEVO: AGREGAR BOTÓN DE GPS ---
-        LocateControl(auto_start=False, drawCircle=True, drawMarker=True, strings={"title": "Mostrar mi ubicación"}).add_to(m)
-        # -----------------------------------
+        
+        # --- GPS DE ALTA PRECISIÓN ---
+        LocateControl(
+            auto_start=False,
+            drawCircle=True,
+            drawMarker=True,
+            flyTo=True,
+            strings={"title": "Mostrar mi ubicación precisa"},
+            locateOptions={
+                'enableHighAccuracy': True,
+                'maxZoom': 18
+            }
+        ).add_to(m)
+        # -----------------------------
+
+        for idx, row in df.iterrows():
+            # Mantenemos la corrección de seguridad (NaN)
+            if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
+                folium.CircleMarker(
+                    location=[row['lat'], row['lng']],
+                    radius=8,
+                    popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=250),
+                    color="#dc2626",
+                    fill=True,
+                    fill_color="#ef4444"
+                ).add_to(m)
+        
+        # Ajustamos la altura para que quepa bien en celulares (500px está bien)
+        st_folium(m, width="100%", height=500)
         for idx, row in df.iterrows():
             # Mantenemos la corrección de seguridad (NaN)
             if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
