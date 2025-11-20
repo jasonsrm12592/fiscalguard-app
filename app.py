@@ -167,4 +167,72 @@ if st.session_state['is_admin']:
 
     tab1, tab2, tab3 = st.tabs(["📋 Gestión", "➕ Agregar (IA)", "📊 Datos"])
     
-    with tab
+    with tab1:
+        st.info("Edita en la tabla y guarda.")
+        edited_df = st.data_editor(
+            df, num_rows="dynamic", use_container_width=True, key="editor",
+            column_config={"lat": st.column_config.NumberColumn(format="%.5f"), "lng": st.column_config.NumberColumn(format="%.5f")}
+        )
+        if st.button("💾 Guardar Cambios", type="primary"):
+            updated_data = edited_df.to_dict(orient='records')
+            st.session_state['restaurants'] = updated_data
+            save_data(updated_data)
+            st.toast('✅ Datos actualizados', icon='💾')
+            time.sleep(1.5)
+            st.rerun()
+
+    with tab2:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("**Manual**")
+            with st.form("man"):
+                n = st.text_input("Nombre")
+                p = st.selectbox("Prov", provinces[1:])
+                a = st.text_input("Dirección")
+                lt = st.number_input("Lat", format="%.5f")
+                lg = st.number_input("Lng", format="%.5f")
+                if st.form_submit_button("Guardar"):
+                    nr = {"id":str(uuid.uuid4()),"name":n,"province":p,"address":a,"lat":lt,"lng":lg,"addedAt":str(datetime.now())}
+                    st.session_state['restaurants'].append(nr)
+                    save_data(st.session_state['restaurants'])
+                    st.toast('✅ Agregado', icon='🎉')
+                    time.sleep(1.5)
+                    st.rerun()
+        with c2:
+            st.write("**IA Import**")
+            txt = st.text_area("Texto raw")
+            if st.button("Procesar"):
+                with st.spinner("Gemini..."):
+                    its = parse_ai_list(txt)
+                    cnt = 0
+                    for i in its:
+                        c = suggest_coordinates(i['address'], i['province'])
+                        nr = {"id":str(uuid.uuid4()),"name":i['name'],"province":i['province'],"address":i['address'],"lat":c['lat'] if c else 0.0,"lng":c['lng'] if c else 0.0,"addedAt":str(datetime.now())}
+                        st.session_state['restaurants'].append(nr)
+                        cnt+=1
+                    save_data(st.session_state['restaurants'])
+                    st.success(f"{cnt} importados.")
+                    time.sleep(1.5)
+                    st.rerun()
+    
+    with tab3:
+        if not df.empty: st.bar_chart(df['province'].value_counts())
+
+# --- VISTA USUARIO ---
+else:
+    tab_map, tab_list = st.tabs(["🗺️ Mapa", "📋 Listado"])
+    with tab_map:
+        m = folium.Map(location=[9.93, -84.08], zoom_start=9)
+        LocateControl(auto_start=False, drawCircle=True, drawMarker=True, flyTo=True, strings={"title": "Mi Ubicación"}, locateOptions={'enableHighAccuracy': True, 'maxZoom': 18}).add_to(m)
+        for _, row in df.iterrows():
+            if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
+                folium.CircleMarker(location=[row['lat'], row['lng']], radius=8, popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=200), color="#dc2626", fill=True, fill_color="#ef4444").add_to(m)
+        st_folium(m, width="100%", height=500, returned_objects=[])
+
+    with tab_list:
+        st.info(f"{len(df)} Locales encontrados")
+        for _, row in df.iterrows():
+            with st.container(border=True):
+                st.subheader(f"🚫 {row['name']}")
+                st.text(f"📍 {row['province']} | {row['address']}")
+
