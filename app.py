@@ -22,11 +22,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS para ocultar menú de desarrollador pero dejar la flecha lateral
+# --- ESTILOS CSS  ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
+            /* Oculta el menú de hamburguesa (tres puntos) y el botón de Deploy/Fork */
+            [data-testid="stToolbar"] {visibility: hidden !important;}
+            
+            /* Oculta el pie de página "Made with Streamlit" */
+            footer {visibility: hidden !important;}
+            
+            /* Oculta la barra de decoración superior (la línea de colores) */
+            header {visibility: hidden !important;}
+            
+            /* ¡IMPORTANTE! Resucita la flecha del sidebar para que sea visible */
+            [data-testid="stSidebarCollapsedControl"] {
+                visibility: visible !important;
+                display: block !important;
+            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -284,5 +296,6 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
 
