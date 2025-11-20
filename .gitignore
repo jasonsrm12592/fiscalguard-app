@@ -1,0 +1,9 @@
+# Archivos de claves y secretos (¡NUNCA SUBIR!)
+.env
+*.json
+secrets.toml
+.streamlit/
+
+# Archivos temporales de Python
+__pycache__/
+*.pyc
