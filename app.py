@@ -146,9 +146,31 @@ if not df.empty:
 tab_map, tab_list, tab_admin = st.tabs(["🗺️ Mapa", "📋 Listado", "🔐 Acceso Admin"])
 
 # MAPA
+# --- PESTAÑA 1: MAPA (Con Selector Satélite/Calles) ---
 with tab_map:
-    m = folium.Map(location=[9.93, -84.08], zoom_start=9)
-    LocateControl(auto_start=False, strings={"title": "Mi Ubicación"}, locateOptions={'enableHighAccuracy': True, 'maxZoom': 18}).add_to(m)
+    # 1. Creamos el mapa base (Por defecto vista Calles)
+    m = folium.Map(location=[9.93, -84.08], zoom_start=9, tiles="OpenStreetMap")
+    
+    # 2. Agregamos la Capa de Satélite (Esri World Imagery)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satélite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+
+    # 3. Agregamos el Botón de "Capas" (arriba a la derecha) para cambiar
+    folium.LayerControl().add_to(m)
+
+    # 4. Botón de GPS
+    LocateControl(
+        auto_start=False, 
+        strings={"title": "Mi Ubicación"}, 
+        locateOptions={'enableHighAccuracy': True, 'maxZoom': 18}
+    ).add_to(m)
+    
+    count_markers = 0
     for _, row in df.iterrows():
         if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
             folium.CircleMarker(
@@ -156,7 +178,12 @@ with tab_map:
                 popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=200),
                 color="#dc2626", fill=True, fill_color="#ef4444"
             ).add_to(m)
+            count_markers += 1
+            
     st_folium(m, width="100%", height=500, returned_objects=[])
+    
+    if count_markers == 0 and not df.empty:
+        st.caption("⚠️ No hay locales geolocalizados en esta vista.")
 
 # --- PESTAÑA 2: LISTADO (Con búsqueda de alternativas) ---
 with tab_list:
@@ -363,3 +390,4 @@ with tab_admin:
                 ).add_to(m_prev)
                 
                 st_folium(m_prev, height=300, width="100%", returned_objects=[])
+
