@@ -250,3 +250,32 @@ with tab_admin:
                 st.link_button("🔎 Buscar en Google Maps", url_maps)
                 
                 curr_v = f"{rec['lat']}, {rec['lng']}" if rec['lat'] != 0 else ""
+                inp = st.text_input("Pega Coordenadas:", value=curr_v, placeholder="Ej: 9.935, -84.051")
+                
+                n_lat, n_lng, valid = 0.0, 0.0, False
+                if inp:
+                    try:
+                        cl = inp.replace('(','').replace(')','')
+                        pts = cl.split(',')
+                        if len(pts)>=2:
+                            n_lat = round(float(pts[0]), 5)
+                            n_lng = round(float(pts[1]), 5)
+                            valid = True
+                            st.success(f"✅ {n_lat}, {n_lng}")
+                    except: st.error("Error formato")
+                
+                if valid and st.button("💾 Guardar", type="primary"):
+                    st.session_state['restaurants'][idx]['lat'] = n_lat
+                    st.session_state['restaurants'][idx]['lng'] = n_lng
+                    save_data(st.session_state['restaurants'])
+                    st.toast('Listo', icon='✅'); time.sleep(1.5); st.rerun()
+
+            with col2:
+                slat = n_lat if valid else (float(rec['lat']) if rec['lat']!=0 else 9.9333)
+                slng = n_lng if valid else (float(rec['lng']) if rec['lng']!=0 else -84.0833)
+                zm = 18 if (valid or rec['lat']!=0) else 10
+                
+                mp = folium.Map([slat, slng], zoom_start=zm, tiles=None)
+                folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Satélite', overlay=False).add_to(mp)
+                folium.Marker([slat, slng], icon=folium.Icon(color="green" if valid else "blue")).add_to(mp)
+                st_folium(mp, height=350, width="100%", returned_objects=[])
