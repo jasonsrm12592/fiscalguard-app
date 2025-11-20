@@ -291,53 +291,78 @@ with tab_admin:
                         st.success(f"{cnt} agregados.")
                         st.rerun()
 
-        # --- PESTAÑA DE MANTENIMIENTO RESTAURADA ---
+       # --- SUB-PESTAÑA 3: MANTENIMIENTO (CALIBRADOR MANUAL) ---
         with subtab3:
-            st.header("🔧 Reparación de Datos")
-            st.info("Usando el modelo: **gemini-2.5-flash**")
+            st.header("🔧 Calibrador Manual de GPS")
+            st.info("Usa esta herramienta para corregir manualmente la ubicación de un local específico.")
+
+            # 1. Seleccionar el Restaurante
+            names_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
+            selected_item = st.selectbox("Selecciona el local a corregir:", names_list)
             
-            if st.button("🪄 Auto-completar Coordenadas", type="primary"):
-                data_to_fix = st.session_state['restaurants']
-                count_fixed = 0
+            # Encontramos el diccionario original basado en la selección
+            # (Usamos el índice para ser precisos)
+            selected_index = names_list.index(selected_item)
+            record = st.session_state['restaurants'][selected_index]
+
+            st.markdown("---")
+            
+            col_ref, col_tool = st.columns([1, 2])
+
+            # COLUMNA IZQUIERDA: Referencia Externa
+            with col_ref:
+                st.subheader("1. Referencia")
+                st.write(f"**Dirección:** {record['address']}")
+                st.write(f"**Coords Actuales:** {record.get('lat', 0)}, {record.get('lng', 0)}")
                 
-                log = st.container(border=True)
-                prog = st.progress(0)
-                total = len(data_to_fix)
+                # Botón para buscar en Google Maps real
+                # Esto abre una pestaña nueva buscando la dirección para que el usuario se ubique
+                search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']} Costa Rica"
+                st.link_button("🔎 Buscar en Google Maps", search_url, help="Abre un mapa externo para ver dónde queda el lugar realmente")
+                st.caption("Mira en Google Maps dónde queda, y luego marca el punto exacto en el mapa de la derecha 👉")
+
+            # COLUMNA DERECHA: El Mapa Interactivo
+            with col_tool:
+                st.subheader("2. Marcar Punto Exacto")
                 
-                with log:
-                    st.write("⏳ Iniciando...")
-                    for idx, item in enumerate(data_to_fix):
-                        prog.progress((idx+1)/total)
-                        try: lat_val = float(item.get('lat', 0))
-                        except: lat_val = 0.0
+                # Centramos el mapa: Si ya tiene coords, ahí. Si no, en la provincia.
+                start_lat = float(record['lat']) if record['lat'] != 0 else 9.9333
+                start_lng = float(record['lng']) if record['lng'] != 0 else -84.0833
+                
+                m_edit = folium.Map(location=[start_lat, start_lng], zoom_start=15)
+                
+                # Ponemos un marcador donde está actualmente
+                if record['lat'] != 0:
+                    folium.Marker(
+                        [record['lat'], record['lng']], 
+                        popup="Ubicación Actual",
+                        icon=folium.Icon(color="red", icon="info-sign")
+                    ).add_to(m_edit)
+                
+                # Permitir hacer clic para obtener coordenadas
+                m_edit.add_child(folium.LatLngPopup())
+                
+                # Mostramos el mapa y capturamos el clic
+                map_output = st_folium(m_edit, height=400, width="100%")
+
+                # LÓGICA DE GUARDADO
+                if map_output and map_output['last_clicked']:
+                    clicked_lat = map_output['last_clicked']['lat']
+                    clicked_lng = map_output['last_clicked']['lng']
+                    
+                    st.success(f"📍 Punto seleccionado: {clicked_lat:.5f}, {clicked_lng:.5f}")
+                    
+                    if st.button("💾 Guardar Nueva Ubicación", type="primary"):
+                        # Actualizamos memoria
+                        st.session_state['restaurants'][selected_index]['lat'] = clicked_lat
+                        st.session_state['restaurants'][selected_index]['lng'] = clicked_lng
                         
-                        if lat_val == 0:
-                            st.write(f"🔸 Procesando: **{item['name']}**...")
-                            
-                            # Aquí ya usamos el modelo correcto (2.5-flash)
-                            coords = suggest_coordinates(item['address'], item['province'])
-                            
-                            if coords:
-                                if coords.get('lat') != 0:
-                                    data_to_fix[idx]['lat'] = coords['lat']
-                                    data_to_fix[idx]['lng'] = coords['lng']
-                                    count_fixed += 1
-                                    st.write("   ✅ ¡Encontrado!")
-                                else:
-                                    st.warning("   ⚠️ IA no pudo ubicarlo.")
-                            else:
-                                st.error("   ❌ Error API (Aún con modelo nuevo).")
-                            
-                            time.sleep(2) # Pausa de seguridad
-                
-                if count_fixed > 0:
-                    save_data(data_to_fix)
-                    st.session_state['restaurants'] = data_to_fix
-                    st.success(f"✅ {count_fixed} arreglados.")
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.warning("Finalizado sin cambios.")
+                        # Guardamos en Nube
+                        save_data(st.session_state['restaurants'])
+                        
+                        st.toast(f"Ubicación de {record['name']} actualizada!", icon='✅')
+                        time.sleep(1.5)
+                        st.rerun()
 
 
 
