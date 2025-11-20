@@ -355,12 +355,48 @@ with tab_admin:
                         else:
                             st.error("No se encontró.")
 
-            # 3. VISUALIZACIÓN Y REFERENCIA
-            # Botón de ayuda vital: Abrir en Maps real para ver fotos
-            search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']}"
-            st.link_button("🔎 Abrir en Google Maps (Ver fotos/fachada)", search_url)
+# --- SUB-PESTAÑA 3: CALIBRADOR CON GOOGLE HYBRID (OPTIMIZADO) ---
+        with subtab3:
+            st.header("🔧 Calibración con Búsqueda")
+            st.info("Mapa Satelital Google Híbrido. Haz clic para marcar.")
 
-            st.write("👇 **Haz clic en el mapa (Ahora con nombres):**")
+            # 1. Seleccionar Local
+            names_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
+            selected_item = st.selectbox("Selecciona el local a corregir:", names_list)
+            selected_index = names_list.index(selected_item)
+            record = st.session_state['restaurants'][selected_index]
+
+            st.markdown("---")
+
+            # Variables de estado
+            if 'map_center_lat' not in st.session_state: st.session_state['map_center_lat'] = 9.9333
+            if 'map_center_lng' not in st.session_state: st.session_state['map_center_lng'] = -84.0833
+            if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 10
+
+            # 2. BUSCADOR IA
+            c_search, c_btn = st.columns([3, 1])
+            with c_search:
+                query = st.text_input("🔍 Centrar mapa en:", value=f"{record['name']}, {record['province']}")
+            with c_btn:
+                st.write("") 
+                st.write("") 
+                if st.button("Ir al sitio", type="secondary"):
+                    with st.spinner("Buscando..."):
+                        res = suggest_coordinates(query, record['province'])
+                        if res and res.get('lat') != 0:
+                            st.session_state['map_center_lat'] = res['lat']
+                            st.session_state['map_center_lng'] = res['lng']
+                            st.session_state['map_zoom'] = 19 
+                            st.toast("Mapa centrado", icon="🎯")
+                            st.rerun()
+                        else:
+                            st.error("No se encontró.")
+
+            # 3. MAPA DE CALIBRACIÓN
+            search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']}"
+            st.link_button("🔎 Ver fotos en Google Maps", search_url)
+
+            st.write("👇 **Haz clic en el techo exacto:**")
             
             # Coordenadas de inicio
             start_lat = st.session_state['map_center_lat']
@@ -373,20 +409,20 @@ with tab_admin:
             else:
                 current_zoom = st.session_state['map_zoom']
 
-            # --- AQUÍ ESTÁ EL CAMBIO DE MAPA ---
-            # Creamos el mapa sin capas por defecto
+            # --- CONFIGURACIÓN DEL MAPA ---
+            # tiles=None para que no cargue nada por defecto hasta que pongamos nuestra capa
             m_edit = folium.Map(location=[start_lat, start_lng], zoom_start=current_zoom, tiles=None)
             
-            # Capa 1: Google Híbrido (Satélite + Nombres) - ESTA ES LA QUE QUIERES
+            # CAPA 1 (DEFAULT): Google Híbrido
             folium.TileLayer(
                 tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
                 attr='Google',
-                name='Google Satélite + Nombres',
+                name='Google Satélite (Híbrido)', # Este nombre saldrá en el control
                 overlay=False,
                 control=True
             ).add_to(m_edit)
 
-            # Capa 2: Callejero normal (Por si acaso)
+            # CAPA 2 (OPCIONAL): Calles
             folium.TileLayer(
                 tiles='OpenStreetMap',
                 name='Mapa Callejero',
@@ -394,7 +430,6 @@ with tab_admin:
                 control=True
             ).add_to(m_edit)
 
-            # Control de capas
             folium.LayerControl().add_to(m_edit)
 
             # Marcadores
@@ -406,23 +441,27 @@ with tab_admin:
 
             m_edit.add_child(folium.LatLngPopup())
             
-            map_output = st_folium(m_edit, height=600, width="100%") # Mapa más alto (600px)
+            # --- AQUÍ ESTÁ LA MAGIA ANTI-PARPADEO ---
+            # returned_objects=["last_clicked"] hace que solo recargue si haces clic.
+            # Mover el mapa o hacer zoom NO recargará la página.
+            map_output = st_folium(m_edit, height=600, width="100%", returned_objects=["last_clicked"])
 
-            # 4. GUARDAR
+            # 4. GUARDADO
             if map_output and map_output['last_clicked']:
                 clicked_lat = map_output['last_clicked']['lat']
                 clicked_lng = map_output['last_clicked']['lng']
                 
-                st.success(f"📍 Punto marcado: {clicked_lat:.5f}, {clicked_lng:.5f}")
+                st.success(f"📍 Punto: {clicked_lat:.5f}, {clicked_lng:.5f}")
                 
-                if st.button("💾 Guardar esta ubicación", type="primary"):
+                if st.button("💾 Guardar Ubicación", type="primary"):
                     st.session_state['restaurants'][selected_index]['lat'] = clicked_lat
                     st.session_state['restaurants'][selected_index]['lng'] = clicked_lng
                     save_data(st.session_state['restaurants'])
                     
                     st.session_state['map_zoom'] = 10
-                    st.toast(f"Ubicación corregida!", icon='✅')
+                    st.toast(f"Corregido!", icon='✅')
                     time.sleep(1.5)
                     st.rerun()
+
 
 
