@@ -194,44 +194,51 @@ with tab_admin:
         subtab1, subtab2, subtab3 = st.tabs(["📝 Editar Tabla", "➕ Agregar Nuevo", "🔧 Mantenimiento"])
         
         with subtab1:
-            st.caption("Edita las celdas y guarda al final.")
-            # Tabla editable (Esto se queda igual)
+            st.caption("Puedes editar celdas o seleccionar filas y presionar Supr/Del para borrar.")
+            # Tabla editable
             edited_df = st.data_editor(
                 df, num_rows="dynamic", use_container_width=True, key="editor",
                 column_config={"lat": st.column_config.NumberColumn(format="%.5f"), "lng": st.column_config.NumberColumn(format="%.5f")}
             )
 
-            # --- CÓDIGO DEL BOTÓN CORREGIDO ---
+            # --- BOTÓN MAESTRO CORREGIDO ---
             if st.button("💾 Guardar Cambios (Nube)", type="primary"):
-                # 1. Convertimos los datos VISIBLES (filtrados/editados) a lista
-                changes_list = edited_df.to_dict(orient='records')
+                # 1. Detectar Eliminaciones en la vista actual
+                # IDs que se mostraron al usuario (Filtrados)
+                ids_shown = set(df['id'].tolist())
                 
-                # 2. Obtenemos la BASE DE DATOS MAESTRA completa (la que tiene todo)
+                # IDs que devolvió el editor (Lo que quedó vivo)
+                current_view_data = edited_df.to_dict(orient='records')
+                ids_remaining = set(row['id'] for row in current_view_data)
+                
+                # La diferencia son los que el usuario borró
+                ids_to_delete = ids_shown - ids_remaining
+                
+                # 2. Cargar Base Maestra
                 master_data = st.session_state['restaurants']
                 
-                # 3. FUSIONAMOS: Actualizamos la maestra con los cambios
-                # Recorremos las filas que el usuario editó/vió
-                for changed_row in changes_list:
-                    # Buscamos la coincidencia en la lista maestra por ID
+                # 3. APLICAR BORRADO: Filtramos la maestra quitando los IDs condenados
+                if ids_to_delete:
+                    master_data = [row for row in master_data if row['id'] not in ids_to_delete]
+                
+                # 4. APLICAR EDICIONES / NUEVOS
+                for changed_row in current_view_data:
                     found = False
                     for i, original_row in enumerate(master_data):
                         if original_row['id'] == changed_row['id']:
-                            master_data[i] = changed_row # Actualizamos esa fila específica
+                            master_data[i] = changed_row # Actualizar existente
                             found = True
                             break
-                    
-                    # Si no se encontró el ID (es un registro nuevo agregado en la tabla filtrada)
                     if not found:
-                        master_data.append(changed_row)
+                        master_data.append(changed_row) # Agregar nuevo
 
-                # 4. Guardamos la LISTA MAESTRA COMPLETA en Google Sheets
+                # 5. Guardar todo
                 st.session_state['restaurants'] = master_data
                 save_data(master_data)
                 
-                st.toast('Base de datos actualizada correctamente', icon='✅')
+                st.toast('Base de datos actualizada (Guardado y Borrado)', icon='✅')
                 time.sleep(1.5)
                 st.rerun()
-            # ----------------------------------
 
         with subtab2:
             c_man, c_ai = st.columns(2)
@@ -312,4 +319,5 @@ with tab_admin:
                     st.rerun()
                 else:
                     st.warning("Finalizado sin cambios.")
+
 
