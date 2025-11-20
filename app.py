@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
+from folium.plugins import LocateControl
 
 # --- CARGAR VARIABLES DE ENTORNO ---
 load_dotenv()
@@ -28,6 +29,7 @@ hide_st_style = """
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # Archivo local para persistencia de datos
 DATA_FILE = "restaurants_data.json"
 
@@ -275,7 +277,9 @@ else:
     with tab_map:
         # Mapa Base
         m = folium.Map(location=[9.7489, -83.7534], zoom_start=8)
-        
+        # --- NUEVO: AGREGAR BOTÓN DE GPS ---
+        LocateControl(auto_start=False, drawCircle=True, drawMarker=True, strings={"title": "Mostrar mi ubicación"}).add_to(m)
+        # -----------------------------------
         for idx, row in df.iterrows():
             # Mantenemos la corrección de seguridad (NaN)
             if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
@@ -300,5 +304,4 @@ else:
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']}")
                 st.caption(row['address'])
-
                 st.warning("Reporte: No entrega factura electrónica")
