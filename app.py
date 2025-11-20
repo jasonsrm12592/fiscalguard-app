@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -194,12 +195,15 @@ if st.session_state['is_admin']:
                 "lng": st.column_config.NumberColumn(format="%.5f"),
             }
         )
-
         if st.button("💾 Guardar Cambios en Nube", type="primary"):
             updated_data = edited_df.to_dict(orient='records')
             st.session_state['restaurants'] = updated_data
-            save_data(updated_data) # Guarda en Google Sheets
-            st.success("¡Base de datos actualizada!")
+            save_data(updated_data)
+            
+            # --- NUEVO CÓDIGO DE NOTIFICACIÓN ---
+            st.toast('✅ ¡Base de datos actualizada correctamente!', icon='💾')
+            time.sleep(1.5) # Pausa de 1.5 segundos para que veas el mensaje
+            # ------------------------------------
             st.rerun()
 
     with tab2:
@@ -219,9 +223,13 @@ if st.session_state['is_admin']:
                     }
                     st.session_state['restaurants'].append(new_r)
                     save_data(st.session_state['restaurants'])
-                    st.success("Guardado")
+                    
+                    # --- NUEVO CÓDIGO DE NOTIFICACIÓN ---
+                    st.toast('🎉 ¡Restaurante agregado con éxito!', icon='✅')
+                    time.sleep(1.5) # Pausa para leer
+                    # ------------------------------------
+                    
                     st.rerun()
-
         with col_ai:
             st.subheader("Importar con IA")
             raw_txt = st.text_area("Pega texto desordenado aquí")
@@ -276,4 +284,5 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
