@@ -230,52 +230,92 @@ with tab_admin:
                         save_data(st.session_state['restaurants'])
                         st.success("Listo"); st.rerun()
 
-        # --- CALIBRADOR SIMPLE Y SEGURO ---
+        # --- HERRAMIENTA HÍBRIDA (PEGAR O TOCAR) ---
         with t3:
             st.header("🎯 Calibración")
-            st.info("Busca en Maps, copia coordenadas y pega.")
             
             nm_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
-            sel = st.selectbox("Local:", nm_list, key="sel_calib")
+            sel = st.selectbox("1. Local:", nm_list, key="sel_calib_final")
             idx = nm_list.index(sel)
             rec = st.session_state['restaurants'][idx]
             
-            col1, col2 = st.columns(2)
+            # SELECTOR DE MODO
+            mode = st.radio("2. Método de ubicación:", ["📋 Pegar Coordenadas (Desde Maps)", "👆 Tocar en el Mapa (Visual)"], horizontal=True)
             
-            with col1:
-                # CAMBIO: Usamos st.link_button simple en vez de HTML complejo
-                # Esto evita el error de colores azules en VS Code
-                search_t = f"{rec['name']} {rec['address']} {rec['province']}"
-                url_maps = f"https://www.google.com/maps/search/?api=1&query={search_t.replace(' ', '+')}"
-                st.link_button("🔎 Buscar en Google Maps", url_maps)
-                
-                curr_v = f"{rec['lat']}, {rec['lng']}" if rec['lat'] != 0 else ""
-                inp = st.text_input("Pega Coordenadas:", value=curr_v, placeholder="Ej: 9.935, -84.051")
-                
-                n_lat, n_lng, valid = 0.0, 0.0, False
-                if inp:
-                    try:
-                        cl = inp.replace('(','').replace(')','')
-                        pts = cl.split(',')
-                        if len(pts)>=2:
-                            n_lat = round(float(pts[0]), 5)
-                            n_lng = round(float(pts[1]), 5)
-                            valid = True
-                            st.success(f"✅ {n_lat}, {n_lng}")
-                    except: st.error("Error formato")
-                
-                if valid and st.button("💾 Guardar", type="primary"):
-                    st.session_state['restaurants'][idx]['lat'] = n_lat
-                    st.session_state['restaurants'][idx]['lng'] = n_lng
-                    save_data(st.session_state['restaurants'])
-                    st.toast('Listo', icon='✅'); time.sleep(1.5); st.rerun()
+            st.markdown("---")
 
-            with col2:
-                slat = n_lat if valid else (float(rec['lat']) if rec['lat']!=0 else 9.9333)
-                slng = n_lng if valid else (float(rec['lng']) if rec['lng']!=0 else -84.0833)
-                zm = 18 if (valid or rec['lat']!=0) else 10
+            # --- MODO A: PEGAR ---
+            if mode == "📋 Pegar Coordenadas (Desde Maps)":
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.info("Busca en Maps > Clic derecho > Copia números")
+                    search_t = f"{rec['name']} {rec['address']} {rec['province']}"
+                    url_maps = f"https://www.google.com/maps/search/?api=1&query={search_t.replace(' ', '+')}"
+                    st.link_button("🔎 Abrir Google Maps", url_maps)
+                    
+                    curr_v = f"{rec['lat']}, {rec['lng']}" if rec['lat'] != 0 else ""
+                    inp = st.text_input("Pega aquí:", value=curr_v, placeholder="Ej: 9.935123, -84.051234")
+                    
+                    n_lat, n_lng, valid = 0.0, 0.0, False
+                    if inp:
+                        try:
+                            cl = inp.replace('(','').replace(')','')
+                            pts = cl.split(',')
+                            if len(pts)>=2:
+                                n_lat = float(pts[0]) # SIN REDONDEO
+                                n_lng = float(pts[1]) # SIN REDONDEO
+                                valid = True
+                                st.success(f"✅ {n_lat}, {n_lng}")
+                        except: st.error("Error formato")
+                    
+                    if valid and st.button("💾 Guardar Pegado", type="primary"):
+                        st.session_state['restaurants'][idx]['lat'] = n_lat
+                        st.session_state['restaurants'][idx]['lng'] = n_lng
+                        save_data(st.session_state['restaurants'])
+                        st.toast('Listo', icon='✅'); time.sleep(1.5); st.rerun()
+
+                with c2:
+                    slat = n_lat if valid else (float(rec['lat']) if rec['lat']!=0 else 9.9333)
+                    slng = n_lng if valid else (float(rec['lng']) if rec['lng']!=0 else -84.0833)
+                    zm = 18 if (valid or rec['lat']!=0) else 10
+                    mp = folium.Map([slat, slng], zoom_start=zm, tiles=None)
+                    folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Satélite', overlay=False).add_to(mp)
+                    folium.Marker([slat, slng], icon=folium.Icon(color="green" if valid else "blue")).add_to(mp)
+                    st_folium(mp, height=350, width="100%", returned_objects=[])
+
+            # --- MODO B: TOCAR ---
+            else:
+                st.info("Navega y haz clic en el techo exacto.")
                 
-                mp = folium.Map([slat, slng], zoom_start=zm, tiles=None)
-                folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Satélite', overlay=False).add_to(mp)
-                folium.Marker([slat, slng], icon=folium.Icon(color="green" if valid else "blue")).add_to(mp)
-                st_folium(mp, height=350, width="100%", returned_objects=[])
+                # Coordenadas iniciales del mapa
+                start_lat = float(rec['lat']) if rec['lat'] != 0 else 9.9333
+                start_lng = float(rec['lng']) if rec['lng'] != 0 else -84.0833
+                start_zoom = 18 if rec['lat'] != 0 else 10
+
+                m_click = folium.Map([start_lat, start_lng], zoom_start=start_zoom, tiles=None)
+                folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Satélite', overlay=False).add_to(m_click)
+                folium.TileLayer(tiles='OpenStreetMap', name='Calles', overlay=False).add_to(m_click)
+                folium.LayerControl().add_to(m_click)
+                
+                # Marcador actual
+                if rec['lat'] != 0:
+                    folium.Marker([rec['lat'], rec['lng']], popup="Actual", icon=folium.Icon(color="blue")).add_to(m_click)
+                
+                # Habilitar clic
+                m_click.add_child(folium.LatLngPopup())
+                
+                # Output del mapa
+                out = st_folium(m_click, height=500, width="100%", returned_objects=["last_clicked"])
+                
+                if out and out['last_clicked']:
+                    clat = out['last_clicked']['lat']
+                    clng = out['last_clicked']['lng']
+                    st.success(f"📍 Seleccionado: {clat}, {clng}")
+                    
+                    if st.button("💾 Guardar Clic", type="primary"):
+                        st.session_state['restaurants'][idx]['lat'] = clat
+                        st.session_state['restaurants'][idx]['lng'] = clng
+                        save_data(st.session_state['restaurants'])
+                        st.toast('Ubicación guardada', icon='✅')
+                        time.sleep(1.5)
+                        st.rerun()
