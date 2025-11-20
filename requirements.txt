@@ -1,9 +1,10 @@
 streamlit
 streamlit-folium
 folium
-google-generativeai
+google-generativeai>=0.7.0
 pandas
 python-dotenv
 matplotlib
 gspread
 oauth2client
+
