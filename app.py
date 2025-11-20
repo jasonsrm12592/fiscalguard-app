@@ -260,48 +260,35 @@ with tab_admin:
                         time.sleep(1.5)
                         st.rerun()
 
+        # --- PESTAÑA DE DIAGNÓSTICO ---
         with subtab3:
-            st.header("🔧 Reparación de Datos")
-            st.info("Escanea y repara coordenadas faltantes. Lento (3-4s/local) para seguridad.")
+            st.header("🔧 Diagnóstico Técnico")
+            st.info("Vamos a ver qué modelos detecta tu aplicación.")
             
-            if st.button("🪄 Auto-completar Coordenadas", type="primary"):
-                data_to_fix = st.session_state['restaurants']
-                count_fixed = 0
-                log = st.container(border=True)
-                prog = st.progress(0)
-                total = len(data_to_fix)
-                
-                with log:
-                    st.write("⏳ Iniciando...")
-                    for idx, item in enumerate(data_to_fix):
-                        prog.progress((idx+1)/total)
-                        try: lat_val = float(item.get('lat', 0))
-                        except: lat_val = 0.0
+            if st.button("🕵️ Escanear Modelos Disponibles", type="primary"):
+                try:
+                    # 1. Configuramos la llave
+                    api_key = get_api_key()
+                    genai.configure(api_key=api_key)
+                    
+                    st.write("📡 Conectando con Google...")
+                    
+                    # 2. Preguntamos la lista de modelos
+                    found = False
+                    for m in genai.list_models():
+                        # Solo mostramos los que sirven para generar texto (generateContent)
+                        if 'generateContent' in m.supported_generation_methods:
+                            st.code(f"Nombre del modelo: {m.name}")
+                            found = True
+                    
+                    if not found:
+                        st.error("❌ No se encontraron modelos. Posible error de librería o permisos.")
+                    else:
+                        st.success("✅ Escaneo completado. Copia uno de los nombres de arriba.")
                         
-                        if lat_val == 0:
-                            st.write(f"🔸 Procesando: **{item['name']}**...")
-                            coords = suggest_coordinates(item['address'], item['province'])
-                            
-                            if coords:
-                                if coords.get('lat') != 0:
-                                    data_to_fix[idx]['lat'] = coords['lat']
-                                    data_to_fix[idx]['lng'] = coords['lng']
-                                    count_fixed += 1
-                                    st.write("   ✅ ¡Encontrado!")
-                                else:
-                                    st.warning("   ⚠️ IA devolvió 0.")
-                            else:
-                                st.error("   ❌ Error API.")
-                            
-                            time.sleep(3.5) # Pausa de seguridad
-                
-                if count_fixed > 0:
-                    save_data(data_to_fix)
-                    st.session_state['restaurants'] = data_to_fix
-                    st.success(f"✅ {count_fixed} arreglados.")
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.warning("Proceso finalizado sin cambios.")
+                except Exception as e:
+                    st.error(f"💥 Error al conectar: {e}")
+                    st.write("Pista: Si dice 'module not found' o similar, es la librería.")
+
 
 
