@@ -73,21 +73,39 @@ def configure_gemini():
     if k: genai.configure(api_key=k); return True
     return False
 
+# FUNCIÓN MEJORADA PARA ENTENDER TEXTO SUCIO
 def suggest_coordinates(address, province):
     if not configure_gemini(): return None
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        # Prompt optimizado para geolocalización
-        prompt = f'Give me latitude/longitude for {address}, {province}, Costa Rica. Return ONLY JSON: {{ "lat": number, "lng": number }}. If unknown, estimate district center.'
+        
+        # Prompt especial para limpiar datos sucios
+        prompt = f"""
+        I have a messy text describing a business in {province}, Costa Rica.
+        The text contains the location BUT ALSO irrelevant comments about invoices/taxes/problems.
+        
+        TEXT: "{address}"
+        
+        TASK:
+        1. Ignore comments like "no factura", "hacienda", "problemas", "desinscrito".
+        2. Extract the city, district, or landmark (example: "Parrita", "San Jose centro", "Mall San Pedro").
+        3. Return the Latitude and Longitude of that location.
+        
+        Return ONLY JSON: {{ "lat": number, "lng": number }}
+        If you absolutely cannot find a location, try to return the center of {province}.
+        """
+        
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
-    except: return None
+    except Exception as e: 
+        return None
 
 def parse_ai_list(raw_text):
     if not configure_gemini(): return []
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f'Extract info. Return JSON: {{ "restaurants": [ {{ "name": str, "province": str, "address": str }} ] }}. Text: {raw_text}'
+        # CORREGIDO EL PARENTESIS QUE FALTABA
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text).get("restaurants", [])
     except: return []
@@ -120,7 +138,7 @@ with st.container(border=True):
 # Filtrado
 df = pd.DataFrame(st.session_state['restaurants'])
 if not df.empty:
-    # Asegurar que lat/lng sean numéricos para evitar errores en mapa
+    # Asegurar que lat/lng sean numéricos
     df['lat'] = pd.to_numeric(df['lat'], errors='coerce').fillna(0.0)
     df['lng'] = pd.to_numeric(df['lng'], errors='coerce').fillna(0.0)
 
@@ -139,7 +157,6 @@ with tab_map:
     
     count_map = 0
     for _, row in df.iterrows():
-        # Solo mostramos si tiene coordenadas válidas (diferentes de 0)
         if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
             folium.CircleMarker(
                 location=[row['lat'], row['lng']], radius=8,
@@ -150,7 +167,7 @@ with tab_map:
             
     st_folium(m, width="100%", height=500, returned_objects=[])
     if count_map == 0 and not df.empty:
-        st.caption("⚠️ Hay locales en la lista, pero no tienen coordenadas. Usa la pestaña Admin > Mantenimiento para corregirlo.")
+        st.caption("⚠️ No hay locales visibles en el mapa. Revisa la pestaña Admin > Mantenimiento.")
 
 # --- PESTAÑA 2: LISTADO ---
 with tab_list:
@@ -168,7 +185,7 @@ with tab_admin:
         with st.form("login_form"):
             password = st.text_input("Contraseña de Acceso", type="password")
             if st.form_submit_button("Ingresar"):
-                # AQUÍ VERIFICA SI EXISTE EL SECRETO, SI NO USA LOS DEFAULT
+                # Verifica secreto o usa default
                 secret_pass = st.secrets.get("ADMIN_PASSWORD")
                 valid_passes = ["admin", "1234", "alrotek"]
                 if secret_pass: valid_passes.append(secret_pass)
@@ -188,7 +205,7 @@ with tab_admin:
         
         st.markdown("---")
         
-        # NUEVA ESTRUCTURA DE 3 SUB-PESTAÑAS
+        # 3 SUB-PESTAÑAS DE GESTIÓN
         subtab1, subtab2, subtab3 = st.tabs(["📝 Editar Tabla", "➕ Agregar Nuevo", "🔧 Mantenimiento"])
         
         with subtab1:
@@ -238,47 +255,55 @@ with tab_admin:
                         st.success(f"{cnt} locales agregados.")
                         time.sleep(1.5)
                         st.rerun()
-        
-        # --- AQUÍ ESTÁ LA MAGIA PARA ARREGLAR TUS COORDENADAS ---
+
+        # --- SUB-PESTAÑA 3: MANTENIMIENTO (NUEVA) ---
         with subtab3:
             st.header("🔧 Reparación de Datos")
-            st.info("Esta herramienta busca en la lista todos los locales que tengan latitud 0.0 y usa a Gemini IA para intentar ubicarlos en el mapa automáticamente.")
+            st.info("Si los datos tienen mucho texto 'basura', la IA intentará ignorarlo y buscar el pueblo/distrito.")
             
-            if st.button("🪄 Auto-completar Coordenadas Faltantes", type="primary"):
+            if st.button("🪄 Auto-completar Coordenadas", type="primary"):
                 data_to_fix = st.session_state['restaurants']
                 count_fixed = 0
                 
-                # Barra de progreso visual
+                log_container = st.container(border=True)
                 prog_bar = st.progress(0)
-                status = st.empty()
                 total = len(data_to_fix)
                 
-                for idx, item in enumerate(data_to_fix):
-                    # Actualizar barra
-                    prog_bar.progress((idx + 1) / total)
-                    
-                    # Verificar si falta coordenada (es 0 o "0")
-                    lat_val = float(item.get('lat', 0))
-                    lng_val = float(item.get('lng', 0))
-                    
-                    if lat_val == 0 or lng_val == 0:
-                        status.write(f"📍 Buscando ubicación para: **{item['name']}**...")
+                with log_container:
+                    st.write("⏳ Iniciando escaneo...")
+                    for idx, item in enumerate(data_to_fix):
+                        prog_bar.progress((idx + 1) / total)
                         
-                        # Llamar a la IA
-                        coords = suggest_coordinates(item['address'], item['province'])
+                        try: lat_val = float(item.get('lat', 0))
+                        except: lat_val = 0.0
                         
-                        if coords and coords['lat'] != 0:
-                            data_to_fix[idx]['lat'] = coords['lat']
-                            data_to_fix[idx]['lng'] = coords['lng']
-                            count_fixed += 1
+                        # Solo si es 0 buscamos coordenadas
+                        if lat_val == 0:
+                            st.write(f"🔸 Procesando: **{item['name']}**...")
+                            coords = suggest_coordinates(item['address'], item['province'])
+                            
+                            if coords:
+                                # Mostramos lo que dice la IA para verificar
+                                st.caption(f"   🤖 Respuesta IA: {coords}")
+                                
+                                if coords.get('lat') != 0:
+                                    data_to_fix[idx]['lat'] = coords['lat']
+                                    data_to_fix[idx]['lng'] = coords['lng']
+                                    count_fixed += 1
+                                    st.write("   ✅ ¡Ubicación encontrada!")
+                                else:
+                                    st.warning("   ⚠️ IA no encontró ubicación precisa.")
+                            else:
+                                st.error("   ❌ Error Gemini.")
+                            
                             time.sleep(0.5) # Pausa para no saturar
                 
                 if count_fixed > 0:
                     save_data(data_to_fix)
                     st.session_state['restaurants'] = data_to_fix
-                    st.success(f"✅ ¡Proceso terminado! Se encontraron {count_fixed} ubicaciones nuevas.")
+                    st.success(f"🎉 ¡Proceso terminado! Se arreglaron {count_fixed} locales.")
                     st.balloons()
-                    time.sleep(2)
+                    time.sleep(3)
                     st.rerun()
                 else:
-                    st.warning("No se encontraron coordenadas nuevas o todos los locales ya tienen ubicación.")
+                    st.warning("El proceso terminó pero no se actualizaron coordenadas. Revisa los mensajes de arriba.")
