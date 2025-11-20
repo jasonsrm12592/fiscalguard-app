@@ -161,7 +161,7 @@ with st.sidebar:
         with st.expander("🔐 Acceso Admin"):
             password = st.text_input("Contraseña", type="password")
             if st.button("Ingresar"):
-                if password in ["admin", "1234", "alrotek"]:
+                if password in ["admin", "4610", "alrotek"]:
                     st.session_state['is_admin'] = True
                     st.rerun()
                 else:
@@ -296,6 +296,7 @@ else:
             with st.container(border=True):
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']} | {row['address']}")
+
 
 
 
