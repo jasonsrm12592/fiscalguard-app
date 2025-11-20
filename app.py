@@ -88,7 +88,7 @@ def suggest_coordinates(address, province):
         
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         
         prompt = f"""
         I have a messy text describing a business in {province}, Costa Rica.
@@ -109,7 +109,7 @@ def suggest_coordinates(address, province):
 def parse_ai_list(raw_text):
     if not configure_gemini(): return []
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         prompt = f'Extract info. Return JSON: {{ "restaurants": [ {{ "name": str, "province": str, "address": str }} ] }}. Text: {raw_text}'
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text).get("restaurants", [])
@@ -303,4 +303,5 @@ with tab_admin:
                     st.rerun()
                 else:
                     st.warning("Proceso finalizado sin cambios.")
+
 
