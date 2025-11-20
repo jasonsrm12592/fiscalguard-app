@@ -24,7 +24,6 @@ st.set_page_config(
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
             footer {visibility: hidden;}
             </style>
             """
@@ -301,4 +300,5 @@ else:
                 st.subheader(f"🚫 {row['name']}")
                 st.text(f"📍 {row['province']}")
                 st.caption(row['address'])
+
                 st.warning("Reporte: No entrega factura electrónica")
