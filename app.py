@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="FiscalGuard - Alrotek",
     page_icon="🛡️",
@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ESTILOS CSS (Modo Pantalla Completa Limpia) ---
+# --- 2. ESTILOS CSS (Modo Limpio) ---
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -35,17 +35,19 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 
 load_dotenv()
 
-# --- FUNCIONES DE BASE DE DATOS ---
+# --- 3. FUNCIONES DE BASE DE DATOS ---
 def get_db_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" not in st.secrets:
-        st.error("Error: Faltan secretos de Google.")
+        st.error("Error Crítico: Faltan los secretos de Google Cloud en Streamlit.")
         return None
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     try: return client.open("FiscalGuard_DB").sheet1
-    except: return None
+    except Exception as e:
+        st.error(f"No se encontró la hoja 'FiscalGuard_DB'. Error: {e}")
+        return None
 
 def load_data():
     sheet = get_db_connection()
@@ -63,62 +65,60 @@ def save_data(data):
         sheet.append_row(headers)
         rows_to_upload = [list(item.values()) for item in data]
         sheet.append_rows(rows_to_upload)
-    except: pass
+    except Exception as e:
+        st.error(f"Error al guardar: {e}")
 
-# --- FUNCIONES IA ---
-def get_api_key(): return os.getenv("API_KEY") or st.secrets.get("API_KEY", "")
+# --- 4. FUNCIONES IA (GEMINI) ---
+def get_api_key(): 
+    return os.getenv("API_KEY") or st.secrets.get("API_KEY", "")
 
 def configure_gemini():
     k = get_api_key()
-    if k: genai.configure(api_key=k); return True
+    if k: 
+        genai.configure(api_key=k)
+        return True
     return False
 
-# FUNCIÓN MEJORADA PARA ENTENDER TEXTO SUCIO
 def suggest_coordinates(address, province):
     if not configure_gemini(): return None
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Prompt especial para limpiar datos sucios
         prompt = f"""
         I have a messy text describing a business in {province}, Costa Rica.
-        The text contains the location BUT ALSO irrelevant comments about invoices/taxes/problems.
+        The text contains the location BUT ALSO irrelevant comments.
         
         TEXT: "{address}"
         
         TASK:
-        1. Ignore comments like "no factura", "hacienda", "problemas", "desinscrito".
-        2. Extract the city, district, or landmark (example: "Parrita", "San Jose centro", "Mall San Pedro").
+        1. Ignore comments like "no factura", "hacienda", "problemas".
+        2. Extract the city, district, or landmark.
         3. Return the Latitude and Longitude of that location.
         
         Return ONLY JSON: {{ "lat": number, "lng": number }}
-        If you absolutely cannot find a location, try to return the center of {province}.
+        If unknown, return center of {province}.
         """
-        
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
-    except Exception as e: 
-        return None
+    except: return None
 
 def parse_ai_list(raw_text):
     if not configure_gemini(): return []
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f'Extract info. Return JSON: {{ "restaurants": [ {{ "name": str, "province": str, "address": str }} ] }}. Text: {raw_text}'
-        # CORREGIDO EL PARENTESIS QUE FALTABA
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text).get("restaurants", [])
     except: return []
 
-# --- ESTADO DE SESIÓN ---
+# --- 5. ESTADO DE SESIÓN ---
 if 'restaurants' not in st.session_state:
     st.session_state['restaurants'] = load_data()
 if 'is_admin' not in st.session_state:
     st.session_state['is_admin'] = False
 
-# --- INTERFAZ PRINCIPAL ---
+# --- 6. INTERFAZ PRINCIPAL ---
 
-# 1. Cabecera
+# Cabecera
 col_logo, col_title = st.columns([1, 5])
 with col_logo:
     if os.path.exists("logo.png"): st.image("logo.png", width=80)
@@ -126,7 +126,7 @@ with col_logo:
 with col_title:
     st.title("FiscalGuard")
 
-# 2. Filtros Globales
+# Filtros
 with st.container(border=True):
     c_search, c_prov = st.columns([2, 1])
     with c_search:
@@ -135,10 +135,10 @@ with st.container(border=True):
         provinces = ["Todas", "San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"]
         selected_province = st.selectbox("Provincia", provinces)
 
-# Filtrado
+# Lógica de Filtrado
 df = pd.DataFrame(st.session_state['restaurants'])
 if not df.empty:
-    # Asegurar que lat/lng sean numéricos
+    # Convertir lat/lng a números seguros
     df['lat'] = pd.to_numeric(df['lat'], errors='coerce').fillna(0.0)
     df['lng'] = pd.to_numeric(df['lng'], errors='coerce').fillna(0.0)
 
@@ -147,15 +147,15 @@ if not df.empty:
     if search_query:
         df = df[df['name'].str.contains(search_query, case=False) | df['address'].str.contains(search_query, case=False)]
 
-# 3. PESTAÑAS PRINCIPALES
+# Pestañas Principales
 tab_map, tab_list, tab_admin = st.tabs(["🗺️ Mapa", "📋 Listado", "🔐 Acceso Admin"])
 
-# --- PESTAÑA 1: MAPA ---
+# --- PESTAÑA MAPA ---
 with tab_map:
     m = folium.Map(location=[9.93, -84.08], zoom_start=9)
     LocateControl(auto_start=False, strings={"title": "Mi Ubicación"}, locateOptions={'enableHighAccuracy': True, 'maxZoom': 18}).add_to(m)
     
-    count_map = 0
+    count_markers = 0
     for _, row in df.iterrows():
         if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
             folium.CircleMarker(
@@ -163,13 +163,13 @@ with tab_map:
                 popup=folium.Popup(f"<b>{row['name']}</b><br>{row['address']}", max_width=200),
                 color="#dc2626", fill=True, fill_color="#ef4444"
             ).add_to(m)
-            count_map += 1
+            count_markers += 1
             
     st_folium(m, width="100%", height=500, returned_objects=[])
-    if count_map == 0 and not df.empty:
-        st.caption("⚠️ No hay locales visibles en el mapa. Revisa la pestaña Admin > Mantenimiento.")
+    if count_markers == 0 and not df.empty:
+        st.caption("⚠️ No hay locales geolocalizados en esta vista.")
 
-# --- PESTAÑA 2: LISTADO ---
+# --- PESTAÑA LISTADO ---
 with tab_list:
     st.info(f"Se encontraron {len(df)} locales.")
     for _, row in df.iterrows():
@@ -178,14 +178,14 @@ with tab_list:
             st.text(f"📍 {row['province']}")
             st.caption(row['address'])
 
-# --- PESTAÑA 3: ADMINISTRACIÓN ---
+# --- PESTAÑA ADMINISTRACIÓN ---
 with tab_admin:
     if not st.session_state['is_admin']:
         st.subheader("Identifícate")
         with st.form("login_form"):
             password = st.text_input("Contraseña de Acceso", type="password")
             if st.form_submit_button("Ingresar"):
-                # Verifica secreto o usa default
+                # Obtener clave secreta de forma segura
                 secret_pass = st.secrets.get("ADMIN_PASSWORD")
                 valid_passes = ["admin", "1234", "alrotek"]
                 if secret_pass: valid_passes.append(secret_pass)
@@ -196,6 +196,7 @@ with tab_admin:
                 else:
                     st.error("Contraseña incorrecta")
     else:
+        # Panel Admin Logueado
         c_head, c_out = st.columns([3, 1])
         with c_head: st.success("✅ Modo Administrador Activo")
         with c_out:
@@ -204,12 +205,10 @@ with tab_admin:
                 st.rerun()
         
         st.markdown("---")
-        
-        # 3 SUB-PESTAÑAS DE GESTIÓN
         subtab1, subtab2, subtab3 = st.tabs(["📝 Editar Tabla", "➕ Agregar Nuevo", "🔧 Mantenimiento"])
         
         with subtab1:
-            st.caption("Edita las celdas y guarda al final.")
+            st.caption("Edita y guarda.")
             edited_df = st.data_editor(
                 df, num_rows="dynamic", use_container_width=True, key="editor",
                 column_config={"lat": st.column_config.NumberColumn(format="%.5f"), "lng": st.column_config.NumberColumn(format="%.5f")}
@@ -218,7 +217,7 @@ with tab_admin:
                 updated_data = edited_df.to_dict(orient='records')
                 st.session_state['restaurants'] = updated_data
                 save_data(updated_data)
-                st.toast('Base de datos actualizada', icon='✅')
+                st.toast('Datos actualizados', icon='✅')
                 time.sleep(1.5)
                 st.rerun()
 
@@ -256,54 +255,46 @@ with tab_admin:
                         time.sleep(1.5)
                         st.rerun()
 
-        # --- SUB-PESTAÑA 3: MANTENIMIENTO (NUEVA) ---
         with subtab3:
             st.header("🔧 Reparación de Datos")
-            st.info("Si los datos tienen mucho texto 'basura', la IA intentará ignorarlo y buscar el pueblo/distrito.")
+            st.info("Escanea y repara coordenadas faltantes. Lento (3-4s/local) para seguridad.")
             
             if st.button("🪄 Auto-completar Coordenadas", type="primary"):
                 data_to_fix = st.session_state['restaurants']
                 count_fixed = 0
-                
-                log_container = st.container(border=True)
-                prog_bar = st.progress(0)
+                log = st.container(border=True)
+                prog = st.progress(0)
                 total = len(data_to_fix)
                 
-                with log_container:
-                    st.write("⏳ Iniciando escaneo...")
+                with log:
+                    st.write("⏳ Iniciando...")
                     for idx, item in enumerate(data_to_fix):
-                        prog_bar.progress((idx + 1) / total)
-                        
+                        prog.progress((idx+1)/total)
                         try: lat_val = float(item.get('lat', 0))
                         except: lat_val = 0.0
                         
-                        # Solo si es 0 buscamos coordenadas
                         if lat_val == 0:
                             st.write(f"🔸 Procesando: **{item['name']}**...")
                             coords = suggest_coordinates(item['address'], item['province'])
                             
                             if coords:
-                                # Mostramos lo que dice la IA para verificar
-                                st.caption(f"   🤖 Respuesta IA: {coords}")
-                                
                                 if coords.get('lat') != 0:
                                     data_to_fix[idx]['lat'] = coords['lat']
                                     data_to_fix[idx]['lng'] = coords['lng']
                                     count_fixed += 1
-                                    st.write("   ✅ ¡Ubicación encontrada!")
+                                    st.write("   ✅ ¡Encontrado!")
                                 else:
-                                    st.warning("   ⚠️ IA no encontró ubicación precisa.")
+                                    st.warning("   ⚠️ IA devolvió 0.")
                             else:
-                                st.error("   ❌ Error Gemini.")
+                                st.error("   ❌ Error API.")
                             
-                            time.sleep(0.5) # Pausa para no saturar
+                            time.sleep(3.5) # Pausa de seguridad
                 
                 if count_fixed > 0:
                     save_data(data_to_fix)
                     st.session_state['restaurants'] = data_to_fix
-                    st.success(f"🎉 ¡Proceso terminado! Se arreglaron {count_fixed} locales.")
-                    st.balloons()
-                    time.sleep(3)
+                    st.success(f"✅ {count_fixed} arreglados.")
+                    time.sleep(2)
                     st.rerun()
                 else:
-                    st.warning("El proceso terminó pero no se actualizaron coordenadas. Revisa los mensajes de arriba.")
+                    st.warning("Proceso finalizado sin cambios.")
