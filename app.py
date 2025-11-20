@@ -80,26 +80,31 @@ def configure_gemini():
     return False
 
 def suggest_coordinates(address, province):
-    if not configure_gemini(): return None
+    # 1. Diagnóstico de Llave
+    api_key = get_api_key()
+    if not api_key:
+        st.error("🚨 ERROR CRÍTICO: Python dice que la variable API_KEY está vacía.")
+        return None
+        
     try:
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
+        
         prompt = f"""
         I have a messy text describing a business in {province}, Costa Rica.
         The text contains the location BUT ALSO irrelevant comments.
-        
         TEXT: "{address}"
-        
-        TASK:
-        1. Ignore comments like "no factura", "hacienda", "problemas".
-        2. Extract the city, district, or landmark.
-        3. Return the Latitude and Longitude of that location.
-        
+        TASK: Extract city/district/landmark. Return Lat/Lng.
         Return ONLY JSON: {{ "lat": number, "lng": number }}
-        If unknown, return center of {province}.
         """
+        
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
-    except: return None
+        
+    except Exception as e:
+        # 2. AQUÍ ESTÁ LA CLAVE: Mostramos el error real en pantalla roja
+        st.error(f"💥 ERROR TÉCNICO DE GEMINI: {str(e)}")
+        return None
 
 def parse_ai_list(raw_text):
     if not configure_gemini(): return []
@@ -298,3 +303,4 @@ with tab_admin:
                     st.rerun()
                 else:
                     st.warning("Proceso finalizado sin cambios.")
+
