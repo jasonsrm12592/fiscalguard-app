@@ -158,14 +158,33 @@ with tab_map:
             ).add_to(m)
     st_folium(m, width="100%", height=500, returned_objects=[])
 
-# LISTADO
+# --- PESTAÑA 2: LISTADO (Con búsqueda de alternativas) ---
 with tab_list:
-    st.info(f"Se encontraron {len(df)} locales.")
+    st.info(f"Se encontraron {len(df)} locales en la lista negra.")
+    
     for _, row in df.iterrows():
         with st.container(border=True):
-            st.subheader(f"🚫 {row['name']}")
-            st.text(f"📍 {row['province']}")
-            st.caption(row['address'])
+            col_info, col_action = st.columns([3, 1])
+            
+            with col_info:
+                st.subheader(f"🚫 {row['name']}")
+                st.text(f"📍 {row['province']}")
+                st.caption(row['address'])
+            
+            with col_action:
+                # Verificamos coordenadas
+                if pd.notna(row['lat']) and pd.notna(row['lng']) and row['lat'] != 0:
+                    
+                    # CAMBIO AQUÍ:
+                    # En lugar de navegación, hacemos una BÚSQUEDA de restaurantes
+                    # centrada en esas coordenadas (@lat,lng) con zoom 16 (cercano).
+                    search_url = f"https://www.google.com/maps/search/restaurantes/@{row['lat']},{row['lng']},16z"
+                    
+                    # Botón con icono de cubiertos/búsqueda
+                    st.link_button("🍽️ Buscar Otro", search_url, help="Buscar restaurantes alternativos cerca de esta ubicación")
+                
+                else:
+                    st.caption("Sin ubicación")
 
 # ADMIN
 with tab_admin:
@@ -319,5 +338,6 @@ with tab_admin:
                     st.rerun()
                 else:
                     st.warning("Finalizado sin cambios.")
+
 
 
