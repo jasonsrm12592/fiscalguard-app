@@ -97,38 +97,41 @@ def parse_ai_list(raw_text):
 if 'restaurants' not in st.session_state:
     st.session_state['restaurants'] = load_data()
 
-# Sidebar - Login y Filtros
+# 1. SIDEBAR (Solo dejamos el Login y Logo para limpiar espacio)
 with st.sidebar:
-    st.image("https://i.imgur.com/3R6400y.png", width=150) # Logo simulado
+    st.image("logo.png", width=150)
     st.title("FiscalGuard")
-    st.markdown("---")
     
     # Modo Admin Toggle
     if 'is_admin' not in st.session_state:
         st.session_state['is_admin'] = False
 
     if not st.session_state['is_admin']:
-        with st.expander("🔐 Acceso Administrador"):
+        with st.expander("🔐 Acceso Admin"):
             password = st.text_input("Contraseña", type="password")
             if st.button("Ingresar"):
                 if password in ["admin", "1234", "alrotek"]:
                     st.session_state['is_admin'] = True
                     st.rerun()
                 else:
-                    st.error("Contraseña incorrecta")
+                    st.error("Incorrecto")
     else:
-        st.success("Modo Administrador Activo")
+        st.success("Modo Admin")
         if st.button("Salir"):
             st.session_state['is_admin'] = False
             st.rerun()
+
+# 2. BARRA DE BÚSQUEDA (Ahora en la pantalla principal)
+# Usamos un contenedor para que destaque
+with st.container(border=True):
+    col_search, col_prov = st.columns([2, 1])
     
-    st.markdown("---")
-    st.subheader("Filtros")
+    with col_search:
+        search_query = st.text_input("🔍 Buscar", placeholder="Nombre del local o dirección...")
     
-    # Filtros de búsqueda
-    search_query = st.text_input("🔍 Buscar nombre o dirección")
-    provinces = ["Todas", "San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"]
-    selected_province = st.selectbox("Provincia", provinces)
+    with col_prov:
+        provinces = ["Todas", "San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"]
+        selected_province = st.selectbox("Provincia", provinces)
 
 # --- LÓGICA PRINCIPAL ---
 
@@ -299,5 +302,3 @@ else:
                 st.text(f"📍 {row['province']}")
                 st.caption(row['address'])
                 st.warning("Reporte: No entrega factura electrónica")
-
-
