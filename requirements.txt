@@ -5,3 +5,5 @@ google-generativeai
 pandas
 python-dotenv
 matplotlib
+gspread
+oauth2client
