@@ -318,43 +318,6 @@ with tab_admin:
                         st.success(f"{cnt} agregados.")
                         st.rerun()
 
-# --- SUB-PESTAÑA 3: CALIBRADOR CON ETIQUETAS (GOOGLE HYBRID) ---
-        with subtab3:
-            st.header("🔧 Calibración con Búsqueda")
-            st.info("Escribe el nombre del lugar para centrar el mapa. El mapa ahora muestra nombres de negocios.")
-
-            # 1. Seleccionar Local
-            names_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
-            selected_item = st.selectbox("Selecciona el local a corregir:", names_list)
-            selected_index = names_list.index(selected_item)
-            record = st.session_state['restaurants'][selected_index]
-
-            st.markdown("---")
-
-            # Variables de estado del mapa
-            if 'map_center_lat' not in st.session_state: st.session_state['map_center_lat'] = 9.9333
-            if 'map_center_lng' not in st.session_state: st.session_state['map_center_lng'] = -84.0833
-            if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 10
-
-            # 2. BUSCADOR IA
-            c_search, c_btn = st.columns([3, 1])
-            with c_search:
-                query = st.text_input("🔍 Buscar sitio para centrar mapa:", value=f"{record['name']}, {record['province']}")
-            with c_btn:
-                st.write("") 
-                st.write("") 
-                if st.button("Ir al sitio", type="secondary"):
-                    with st.spinner("Buscando..."):
-                        res = suggest_coordinates(query, record['province'])
-                        if res and res.get('lat') != 0:
-                            st.session_state['map_center_lat'] = res['lat']
-                            st.session_state['map_center_lng'] = res['lng']
-                            st.session_state['map_zoom'] = 19 # Zoom MÁXIMO para ver techos
-                            st.toast("Mapa centrado", icon="🎯")
-                            st.rerun()
-                        else:
-                            st.error("No se encontró.")
-
 # --- SUB-PESTAÑA 3: CALIBRADOR CON GOOGLE HYBRID (OPTIMIZADO) ---
         with subtab3:
             st.header("🔧 Calibración con Búsqueda")
@@ -462,6 +425,7 @@ with tab_admin:
                     st.toast(f"Corregido!", icon='✅')
                     time.sleep(1.5)
                     st.rerun()
+
 
 
 
