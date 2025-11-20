@@ -318,76 +318,111 @@ with tab_admin:
                         st.success(f"{cnt} agregados.")
                         st.rerun()
 
-       # --- SUB-PESTAÑA 3: CALIBRADOR RÁPIDO (COPY-PASTE) ---
+# --- SUB-PESTAÑA 3: CALIBRADOR CON ETIQUETAS (GOOGLE HYBRID) ---
         with subtab3:
-            st.header("🔧 Calibración por Coordenadas")
-            st.info("Busca el lugar en Google Maps, copia las coordenadas (click derecho) y pégalas aquí.")
+            st.header("🔧 Calibración con Búsqueda")
+            st.info("Escribe el nombre del lugar para centrar el mapa. El mapa ahora muestra nombres de negocios.")
 
             # 1. Seleccionar Local
             names_list = [f"{r['name']} ({r['province']})" for r in st.session_state['restaurants']]
             selected_item = st.selectbox("Selecciona el local a corregir:", names_list)
-            
-            # Identificamos el registro en memoria
             selected_index = names_list.index(selected_item)
             record = st.session_state['restaurants'][selected_index]
 
             st.markdown("---")
 
-            col_input, col_preview = st.columns([1, 1])
+            # Variables de estado del mapa
+            if 'map_center_lat' not in st.session_state: st.session_state['map_center_lat'] = 9.9333
+            if 'map_center_lng' not in st.session_state: st.session_state['map_center_lng'] = -84.0833
+            if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 10
 
-            with col_input:
-                st.subheader("1. Pegar Coordenadas")
-                
-                # Botón de ayuda para abrir Maps
-                search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']} Costa Rica"
-                st.link_button("🔎 Abrir Google Maps para buscar", search_url)
-                
-                # CAJA DE TEXTO PARA PEGAR
-                # Pre-llenamos con lo que tenga actualmente (si no es 0)
-                current_val = f"{record['lat']}, {record['lng']}" if record['lat'] != 0 else ""
-                coords_input = st.text_input("Pega aquí (Latitud, Longitud):", value=current_val, placeholder="Ej: 9.9356, -84.0982")
-                
-                new_lat, new_lng = 0.0, 0.0
-                valid_input = False
-
-                # Intentamos interpretar lo que pegó el usuario
-                if coords_input:
-                    try:
-                        # Google Maps suele dar "Lat, Lng". Separamos por la coma.
-                        parts = coords_input.split(',')
-                        if len(parts) == 2:
-                            new_lat = float(parts[0].strip())
-                            new_lng = float(parts[1].strip())
-                            valid_input = True
-                            st.success("✅ Formato correcto detectado.")
+            # 2. BUSCADOR IA
+            c_search, c_btn = st.columns([3, 1])
+            with c_search:
+                query = st.text_input("🔍 Buscar sitio para centrar mapa:", value=f"{record['name']}, {record['province']}")
+            with c_btn:
+                st.write("") 
+                st.write("") 
+                if st.button("Ir al sitio", type="secondary"):
+                    with st.spinner("Buscando..."):
+                        res = suggest_coordinates(query, record['province'])
+                        if res and res.get('lat') != 0:
+                            st.session_state['map_center_lat'] = res['lat']
+                            st.session_state['map_center_lng'] = res['lng']
+                            st.session_state['map_zoom'] = 19 # Zoom MÁXIMO para ver techos
+                            st.toast("Mapa centrado", icon="🎯")
+                            st.rerun()
                         else:
-                            st.error("Formato incorrecto. Asegúrate de copiar 'Latitud, Longitud' (con una coma en medio).")
-                    except:
-                        st.error("Error: Solo se permiten números y una coma.")
+                            st.error("No se encontró.")
 
-                if valid_input:
-                    if st.button("💾 Guardar Coordenadas", type="primary"):
-                        st.session_state['restaurants'][selected_index]['lat'] = new_lat
-                        st.session_state['restaurants'][selected_index]['lng'] = new_lng
-                        save_data(st.session_state['restaurants'])
-                        st.toast(f"Actualizado: {new_lat}, {new_lng}", icon='📍')
-                        time.sleep(1.5)
-                        st.rerun()
+            # 3. VISUALIZACIÓN Y REFERENCIA
+            # Botón de ayuda vital: Abrir en Maps real para ver fotos
+            search_url = f"https://www.google.com/maps/search/?api=1&query={record['name']} {record['address']} {record['province']}"
+            st.link_button("🔎 Abrir en Google Maps (Ver fotos/fachada)", search_url)
 
-            with col_preview:
-                st.subheader("2. Vista Previa")
-                # Si el usuario pegó algo válido, mostramos ESE punto. Si no, el actual.
-                preview_lat = new_lat if valid_input else (float(record['lat']) if record['lat'] != 0 else 9.9333)
-                preview_lng = new_lng if valid_input else (float(record['lng']) if record['lng'] != 0 else -84.0833)
+            st.write("👇 **Haz clic en el mapa (Ahora con nombres):**")
+            
+            # Coordenadas de inicio
+            start_lat = st.session_state['map_center_lat']
+            start_lng = st.session_state['map_center_lng']
+            
+            if record['lat'] != 0 and st.session_state['map_zoom'] == 10:
+                start_lat = record['lat']
+                start_lng = record['lng']
+                current_zoom = 18
+            else:
+                current_zoom = st.session_state['map_zoom']
+
+            # --- AQUÍ ESTÁ EL CAMBIO DE MAPA ---
+            # Creamos el mapa sin capas por defecto
+            m_edit = folium.Map(location=[start_lat, start_lng], zoom_start=current_zoom, tiles=None)
+            
+            # Capa 1: Google Híbrido (Satélite + Nombres) - ESTA ES LA QUE QUIERES
+            folium.TileLayer(
+                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                attr='Google',
+                name='Google Satélite + Nombres',
+                overlay=False,
+                control=True
+            ).add_to(m_edit)
+
+            # Capa 2: Callejero normal (Por si acaso)
+            folium.TileLayer(
+                tiles='OpenStreetMap',
+                name='Mapa Callejero',
+                overlay=False,
+                control=True
+            ).add_to(m_edit)
+
+            # Control de capas
+            folium.LayerControl().add_to(m_edit)
+
+            # Marcadores
+            if record['lat'] != 0:
+                folium.Marker([record['lat'], record['lng']], popup="Actual", icon=folium.Icon(color="blue", icon="info-sign")).add_to(m_edit)
+            
+            if st.session_state['map_zoom'] >= 18:
+                 folium.Marker([start_lat, start_lng], popup="Sugerencia IA", icon=folium.Icon(color="gray", icon="search")).add_to(m_edit)
+
+            m_edit.add_child(folium.LatLngPopup())
+            
+            map_output = st_folium(m_edit, height=600, width="100%") # Mapa más alto (600px)
+
+            # 4. GUARDAR
+            if map_output and map_output['last_clicked']:
+                clicked_lat = map_output['last_clicked']['lat']
+                clicked_lng = map_output['last_clicked']['lng']
                 
-                m_prev = folium.Map(location=[preview_lat, preview_lng], zoom_start=16)
+                st.success(f"📍 Punto marcado: {clicked_lat:.5f}, {clicked_lng:.5f}")
                 
-                # Marcador
-                folium.Marker(
-                    [preview_lat, preview_lng],
-                    popup=f"{record['name']}",
-                    icon=folium.Icon(color="green" if valid_input else "gray", icon="map-marker")
-                ).add_to(m_prev)
-                
-                st_folium(m_prev, height=300, width="100%", returned_objects=[])
+                if st.button("💾 Guardar esta ubicación", type="primary"):
+                    st.session_state['restaurants'][selected_index]['lat'] = clicked_lat
+                    st.session_state['restaurants'][selected_index]['lng'] = clicked_lng
+                    save_data(st.session_state['restaurants'])
+                    
+                    st.session_state['map_zoom'] = 10
+                    st.toast(f"Ubicación corregida!", icon='✅')
+                    time.sleep(1.5)
+                    st.rerun()
+
 
