@@ -6,7 +6,7 @@ import plotly.express as px
 from datetime import datetime
 import io
 import os
-import ast  # Librería para leer diccionarios de texto de forma segura
+import ast  # Librería necesaria para leer la analítica de forma segura
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Alrotek Sales Monitor", layout="wide")
@@ -213,7 +213,7 @@ def cargar_estructura_analitica():
         uid = common.authenticate(DB, USERNAME, PASSWORD, {})
         models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object')
         
-        # 1. Traemos los PLANES (Ej: Proyectos, Mantenimientos)
+        # 1. Traemos los PLANES
         ids_plans = models.execute_kw(DB, uid, PASSWORD, 'account.analytic.plan', 'search', [[['id', '!=', 0]]])
         plans = models.execute_kw(DB, uid, PASSWORD, 'account.analytic.plan', 'read', [ids_plans], {'fields': ['name']})
         df_plans = pd.DataFrame(plans).rename(columns={'id': 'plan_id', 'name': 'Plan_Nombre'})
@@ -275,7 +275,8 @@ def cargar_metas():
     return pd.DataFrame({'Mes': [], 'Meta': [], 'Mes_Num': [], 'Anio': []})
 
 # --- 5. INTERFAZ ---
-st.title("🚀 Monitor Comercial ALROTEK")
+# *** AQUÍ ESTÁ EL CAMBIO PARA VERIFICAR: "v2.0" ***
+st.title("🚀 Monitor Comercial ALROTEK v2.0")
 
 tab_kpis, tab_prod, tab_renta, tab_inv, tab_cx, tab_cli, tab_vend, tab_det = st.tabs([
     "📊 Visión General", 
@@ -369,31 +370,30 @@ with tab_kpis:
                 fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
                 st.plotly_chart(fig_pie, use_container_width=True)
                 
-                # 2. Gráfico de Barras Apiladas por Mes (CORREGIDO)
+                # 2. Gráfico de Barras Apiladas por Mes (CORREGIDO CON TOTALES)
                 st.subheader("📅 Evolución Mensual por Plan")
                 df_lineas['Mes_Nombre'] = df_lineas['date'].dt.strftime('%m-%b')
                 df_lineas['Mes_Num'] = df_lineas['date'].dt.month
                 
-                # Agrupación base para las barras
                 ventas_mes_plan = df_lineas.groupby(['Mes_Num', 'Mes_Nombre', 'Plan_Agrupado'])['Venta_Neta'].sum().reset_index()
                 ventas_mes_plan = ventas_mes_plan.sort_values('Mes_Num')
                 
-                # Calculamos el TOTAL por mes para ponerlo encima
+                # Cálculo de Totales para Etiquetas
                 total_por_mes = df_lineas.groupby(['Mes_Num', 'Mes_Nombre'])['Venta_Neta'].sum().reset_index().sort_values('Mes_Num')
                 total_por_mes['Label'] = total_por_mes['Venta_Neta'].apply(lambda x: f"₡{x/1e6:.1f}M")
                 
                 fig_stack = px.bar(ventas_mes_plan, x='Mes_Nombre', y='Venta_Neta', color='Plan_Agrupado',
-                                   title="Mix de Ventas Mensual (con Totales)",
+                                   title="Mix de Ventas Mensual",
                                    color_discrete_sequence=px.colors.qualitative.Prism)
                 
-                # Agregamos los totales encima de las barras
+                # Agregar etiquetas de total encima
                 fig_stack.add_trace(go.Scatter(
                     x=total_por_mes['Mes_Nombre'], 
                     y=total_por_mes['Venta_Neta'],
                     text=total_por_mes['Label'],
                     mode='text',
                     textposition='top center',
-                    textfont=dict(size=12, color='black'),
+                    textfont=dict(size=11, color='black'),
                     showlegend=False
                 ))
                 
@@ -405,7 +405,7 @@ with tab_kpis:
 
             st.divider()
 
-            # GRÁFICO META Y COMPARATIVO GLOBAL (CORREGIDO COLORES)
+            # GRÁFICO META Y COMPARATIVO GLOBAL (CORREGIDO COLORES SEMÁFORO)
             v_mes_act = df_anio.groupby('Mes_Num')['Venta_Neta'].sum().reset_index()
             v_mes_act.columns = ['Mes_Num', 'Venta_Actual']
             v_mes_ant = df_ant_data.groupby('Mes_Num')['Venta_Neta'].sum().reset_index()
@@ -419,12 +419,12 @@ with tab_kpis:
             nombres_meses = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
             df_chart['Mes_Nombre'] = df_chart['Mes_Num'].map(nombres_meses)
 
-            # Lógica de colores (Rojo/Verde/Amarillo)
+            # Lógica de colores Semáforo
             def get_color(real, meta):
                 if meta == 0: return '#2980b9' # Azul si no hay meta
                 if real > meta: return '#27ae60' # Verde
                 if real < meta: return '#c0392b' # Rojo
-                return '#f1c40f' # Amarillo (Exacto)
+                return '#f1c40f' # Amarillo
             
             colores_meta = [get_color(r, m) for r, m in zip(df_chart['Venta_Actual'], df_chart['Meta'])]
 
